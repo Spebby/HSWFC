@@ -15,7 +15,14 @@
 /[Uu]ser[Ss]ettings/
 *.log
 
-# By default unity supports Blender asset imports, *.blend1 blender files do not need to be commited to version control.
+.idea/
+.vscode/
+.vs/
+.direnv/
+**.DotSettings.user
+.pre-commit-config.yaml
+
+# By default unity supports Blender asset imports, *.blend1 blender files do not need to be committed to version control.
 *.blend1
 *.blend1.meta
 
