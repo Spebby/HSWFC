@@ -1,0 +1,59 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bdb0a69fe19986f3ba9aa48c8fee93c7, type: 3}
+  m_Name: Terrain_Dirt
+  m_EditorClassIdentifier: Assembly-CSharp::TerrainDef
+  baseVariants:
+  - {fileID: 1273814310, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+  - {fileID: -759868157, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+  - {fileID: 933506040, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+  - {fileID: 1768251139, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+  debugColor: {r: 0.49056602, g: 0.3973403, b: 0.33090067, a: 1}
+  weight: 3
+  biomeCenter: 0.2
+  canNeighbor:
+  - {fileID: 11400000, guid: 042b15de7b7ef2d27a2e6c814d39c31f, type: 2}
+  - {fileID: 11400000, guid: 2c8280930fc902db49ffcfeb2ff8ec6f, type: 2}
+  minLevel: 0
+  maxLevel: 99
+  allowOnRim: 0
+  restrictBelowCliff: 0
+  allowedBelowCliff: []
+  cliffStyle: {fileID: 11400000, guid: be6e7e386f7d30e1fbb68ef8fdf36f03, type: 2}
+  priority: 0
+  overlay:
+    mode: 0
+    edges:
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    corners:
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    blob: {fileID: 0}
+  noOverlayOnto: []
+  props: []

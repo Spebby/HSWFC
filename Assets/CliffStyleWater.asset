@@ -1,0 +1,103 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ea7ebd953a3acf63b91fd898017309fe, type: 3}
+  m_Name: CliffStyleWater
+  m_EditorClassIdentifier: Assembly-CSharp::CliffStyle
+  middle:
+    single: []
+    top:
+    - {fileID: 1780106730, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: 1397962912, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    mid:
+    - {fileID: 439072476, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: 856586175, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: -1413951796, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: 349855013, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    bottom:
+    - {fileID: -138200351, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: -666730627, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+  leftEnd:
+    single: []
+    top:
+    - {fileID: -1913505004, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    mid:
+    - {fileID: 847744590, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: -788464547, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    bottom:
+    - {fileID: -1515826680, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+  rightEnd:
+    single: []
+    top:
+    - {fileID: -1964663085, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    mid:
+    - {fileID: -23329585, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: 68824276, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    bottom:
+    - {fileID: 626402466, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+  narrow:
+    single: []
+    top: []
+    mid: []
+    bottom: []
+  innerLeft:
+    single: []
+    top:
+    - {fileID: -1913505004, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    mid:
+    - {fileID: 1718098927, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: 103942161, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    bottom:
+    - {fileID: -2019529998, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+  innerRight:
+    single: []
+    top:
+    - {fileID: -1964663085, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    mid:
+    - {fileID: -1896142685, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: -1918550727, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    bottom:
+    - {fileID: 328842298, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+  rim:
+    mode: 1
+    edges:
+    - {fileID: 0}
+    - {fileID: -1882186323, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: -1221746909, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: 641162254, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: 0}
+    - {fileID: -94362251, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: -1221746909, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: 641162254, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: -750277568, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: -132183319, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: -317776012, guid: 356b7f0f447f78736af9f6b6723301ce, type: 3}
+    - {fileID: 3618351719968282445, guid: 356b7f0f447f78736af9f6b6723301ce, type: 3}
+    - {fileID: -750277568, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: 1029057529, guid: 356b7f0f447f78736af9f6b6723301ce, type: 3}
+    - {fileID: 769336449, guid: 356b7f0f447f78736af9f6b6723301ce, type: 3}
+    - {fileID: 0}
+    corners:
+    - {fileID: -1749916912, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: 418262642, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: -1231364857, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    - {fileID: -1880763751, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    blob: {fileID: 0}
+  family: standard
+  compatibleWith:
+  - {fileID: 11400000, guid: be6e7e386f7d30e1fbb68ef8fdf36f03, type: 2}
+  dominance: 0
+  minSpan: -1
+  stairs: {fileID: 0}
+  moreFeatures:
+  - {fileID: 0}
+  sideLeft: {fileID: 0}
+  sideRight: {fileID: 0}

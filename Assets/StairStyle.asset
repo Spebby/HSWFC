@@ -1,0 +1,81 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d9d63366edc84f3d96f1e239348b9d2c, type: 3}
+  m_Name: StairStyle
+  m_EditorClassIdentifier: Assembly-CSharp::StairStyle
+  allowSouth: 1
+  allowWest: 0
+  allowEast: 0
+  replacesCliff: 0
+  requiredUpperTerrains: []
+  requiredLowerTerrains: []
+  sourceDepth: 0
+  allowSeamStraddle: 0
+  minWidthInSeamZone: 2
+  adapters: []
+  width: {x: 2, y: 4}
+  drop: {x: 1, y: 4}
+  edgeClearance: 1
+  landingDepth: 1
+  allowedTerrains:
+  - {fileID: 11400000, guid: 042b15de7b7ef2d27a2e6c814d39c31f, type: 2}
+  - {fileID: 11400000, guid: 48a2c50f854d0960e88c6cb7356e54b9, type: 2}
+  chancePerRun: 0.5
+  maxPerRun: 1
+  spacing: 2
+  maxTotal: 0
+  attempts: 12
+  left:
+    single: []
+    top:
+    - {fileID: 166971409, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    mid:
+    - {fileID: 1250037010, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    bottom:
+    - {fileID: -1375279840, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+  middle:
+    single: []
+    top:
+    - {fileID: 1841209125, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    mid:
+    - {fileID: 1337790708, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    bottom:
+    - {fileID: 638831388, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+  right:
+    single: []
+    top:
+    - {fileID: -83793723, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    mid:
+    - {fileID: 1031951045, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+    bottom:
+    - {fileID: -1551389528, guid: 846fc11140e09dda5a823318d756b2cb, type: 3}
+  narrow:
+    single: []
+    top: []
+    mid: []
+    bottom: []
+  upperLanding: []
+  lowerLanding: []
+  treadTop:
+  - {fileID: 0}
+  treadFront:
+    single: []
+    top: []
+    mid: []
+    bottom: []
+  treadTopEast: []
+  treadFrontEast:
+    single: []
+    top: []
+    mid: []
+    bottom: []
+  mirrorEastFromWest: 1

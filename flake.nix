@@ -43,7 +43,6 @@
               nil.enable = true;
               shellcheck.enable = true;
               shfmt.enable = true;
-              typos.enable = true;
             };
           };
         };

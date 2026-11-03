@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bdb50f96dfc02cab797312c54b3a7623, type: 3}
+  m_Name: Structure_Boulder
+  m_EditorClassIdentifier: Assembly-CSharp::StructureDef
+  sprite: {fileID: 0}
+  offset: {x: 0, y: 0}
+  foreground: {fileID: 21300000, guid: 6220364d14531669593046278b648f15, type: 3}
+  foregroundRowOffset: 1
+  footprint: {x: 2, y: 1}
+  margin: 1
+  heightMode: 0
+  groundTerrains:
+  - {fileID: 11400000, guid: 042b15de7b7ef2d27a2e6c814d39c31f, type: 2}
+  count: {x: 1, y: 16}
+  attempts: 60
