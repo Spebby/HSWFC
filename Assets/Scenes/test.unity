@@ -221,7 +221,6 @@ GameObject:
   m_Component:
   - component: {fileID: 1644783905}
   - component: {fileID: 1644783904}
-  - component: {fileID: 1644783906}
   m_Layer: 0
   m_Name: GameObject
   m_TagString: Untagged
@@ -269,6 +268,9 @@ MonoBehaviour:
   probeCell: {x: 10, y: 10}
   blendAcrossHeights: 0
   autoFrameCamera: 1
+  heightShading: 1
+  heightShadeStrength: 0.3
+  shadeObjects: 1
 --- !u!4 &1644783905
 Transform:
   m_ObjectHideFlags: 0
@@ -284,36 +286,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1644783906
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1644783903}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4b2649ca30c4fffd791273b4b729238a, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::LayeredWfcDemo
-  seed: 7
-  width: 64
-  height: 64
-  regionalBias: 0.7
-  weightWater: 1
-  weightDirt: 1
-  weightGrass: 2
-  weightSand: 1
-  heightAmount: 0.7
-  maxLevel: 6
-  clampStepSize: 0
-  maxStep: 1
-  treeDensity: 0.1
-  view: 0
-  transitions: 1
-  cliffs: 1
-  trees: 1
-  autoFrameCamera: 1
 --- !u!1 &2135155390
 GameObject:
   m_ObjectHideFlags: 0

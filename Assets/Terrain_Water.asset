@@ -29,11 +29,7 @@ MonoBehaviour:
   restrictBelowCliff: 0
   allowedBelowCliff: []
   cliffStyle: {fileID: 0}
-  cliffRules:
-  - style: {fileID: 11400000, guid: 95bb6bd29d14bfd069ac590918c5d81c, type: 2}
-    whenBelow:
-    - {fileID: 11400000, guid: 042b15de7b7ef2d27a2e6c814d39c31f, type: 2}
-    priority: 0
+  cliffRules: []
   footRules: []
   priority: 99
   overlay:
@@ -60,6 +56,6 @@ MonoBehaviour:
     - {fileID: 0}
     - {fileID: 0}
     - {fileID: 0}
-    blob: {fileID: 11400000, guid: bdf8a02c34a94fd838f9f475c40f6468, type: 2}
+    blob: {fileID: 0}
   noOverlayOnto: []
   props: []

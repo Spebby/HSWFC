@@ -73,6 +73,14 @@ public class LayeredTerrainGenerator : MonoBehaviour
     public bool blendAcrossHeights = false;
     public bool autoFrameCamera = true;
 
+    [Header("Height shading")]
+    [Tooltip("Tint lower levels darker (a multiplicative tint, no shader). Off = no tinting anywhere; use it for tilesets whose cliff and prop art does not match the shaded ground.")]
+    public bool heightShading = true;
+    [Range(0f, 0.6f), Tooltip("How much darker the lowest level is than the highest.")]
+    public float heightShadeStrength = 0.3f;
+    [Tooltip("Cliff faces, stairs, props and structures take the same tint as the ground at their elevation, so they match the tiles beside them. Each face / stair piece is tinted for the elevation it spans, so a tall cliff blends from the upper surface's tint to the lower one's.")]
+    public bool shadeObjects = true;
+
     static readonly Vector2Int[] Dir8 = { // OverlayMasks bit order: N, NE, E, SE, S, SW, W, NW
         new Vector2Int(0,1), new Vector2Int(1,1), new Vector2Int(1,0), new Vector2Int(1,-1),
         new Vector2Int(0,-1), new Vector2Int(-1,-1), new Vector2Int(-1,0), new Vector2Int(-1,1) };
@@ -516,7 +524,14 @@ public class LayeredTerrainGenerator : MonoBehaviour
         go.transform.localPosition = min; go.transform.localScale = new Vector3(size.x, size.y, 1);
         var sr = go.AddComponent<SpriteRenderer>(); sr.sprite = FlatSprite(); sr.color = c; sr.sortingOrder = order;
     }
-    Color Shade(int hv) { float sh = 0.7f + 0.3f * hv / Mathf.Max(1, maxLevel); return new Color(sh, sh, sh); }
+    // Tint for an elevation (fractional elevations are fine: a face piece uses the middle of the levels it spans).
+    Color Shade(float elev)
+    {
+        if (!heightShading) return Color.white;
+        float sh = 1f - heightShadeStrength * (1f - Mathf.Clamp01(elev / Mathf.Max(1, maxLevel)));
+        return new Color(sh, sh, sh);
+    }
+    Color ObjShade(float elev) { return shadeObjects ? Shade(elev) : Color.white; }
     void WarnOnce(string key, string msg) { if (warned.Add(key)) Debug.LogWarning("[Generator] " + msg); }
 
     // ---- Entry point --------------------------------------------------------------------------
@@ -604,7 +619,7 @@ public class LayeredTerrainGenerator : MonoBehaviour
                     {
                         if (p.variants == null || p.variants.Length == 0 || R.NextDouble() >= p.density) continue;
                         Vector2 foot = (Vector2)GridToWorld(x + 0.5f, y, hm[i]) + p.offset;
-                        PutAtFoot(Pick(p.variants, x, y, 3), foot, SortingOrderFor(y, SlotProp), Color.white);
+                        PutAtFoot(Pick(p.variants, x, y, 3), foot, SortingOrderFor(y, SlotProp), ObjShade(hm[i]));
                         break;
                     }
                 }
@@ -617,8 +632,8 @@ public class LayeredTerrainGenerator : MonoBehaviour
             {
                 var def = ct.structures[p.si].def;
                 Vector2 foot = (Vector2)GridToWorld(p.x + def.footprint.x / 2f, p.y, hm[p.y * w + p.x]) + def.offset;
-                if (def.sprite != null) PutAtFoot(def.sprite, foot, SortingOrderFor(p.y, SlotStructure), Color.white);
-                if (def.foreground != null) PutAtFoot(def.foreground, foot, SortingOrderFor(p.y - def.foregroundRowOffset, SlotForeground), Color.white);
+                if (def.sprite != null) PutAtFoot(def.sprite, foot, SortingOrderFor(p.y, SlotStructure), ObjShade(hm[p.y * w + p.x]));
+                if (def.foreground != null) PutAtFoot(def.foreground, foot, SortingOrderFor(p.y - def.foregroundRowOffset, SlotForeground), ObjShade(hm[p.y * w + p.x]));
             }
     }
 
@@ -687,9 +702,9 @@ public class LayeredTerrainGenerator : MonoBehaviour
                     {
                         var s = Pick(First(Slot(row, v), Slot(st.middle, v)), x, run.upperRow * 64 + k, 2); // empty slot -> middle row
                         if (s == null) { WarnOnce("face" + sid, "Wall style '" + st.name + "' has no face sprite for some slot; those pieces are skipped."); }
-                        else PutBox(s, box, new Vector2(cellSize, elevationStepWorld), order, Color.white, fitFacesToStep);
+                        else PutBox(s, box, new Vector2(cellSize, elevationStepWorld), order, ObjShade(run.upperElev - k - 0.5f), fitFacesToStep);
                     }
-                    if (layer != null) PutBox(layer, box, new Vector2(cellSize, elevationStepWorld), order + 1, Color.white, fitFacesToStep);
+                    if (layer != null) PutBox(layer, box, new Vector2(cellSize, elevationStepWorld), order + 1, ObjShade(run.upperElev - k - 0.5f), fitFacesToStep);
                 }
 
                 // Optional art on the foot cell itself (foam, shadow...): mask bit = that neighbour is HIGHER than the foot cell.
@@ -720,7 +735,7 @@ public class LayeredTerrainGenerator : MonoBehaviour
             var es = ct.cliff[e.terrain]; if (es == null) continue;
             if ((rimClear[e.y * w + e.x] & (e.east ? OverlayMasks.E : OverlayMasks.W)) != 0) continue; // stair opening
             var s = e.east ? es.sideRight : es.sideLeft; if (s == null) continue;
-            PutBox(s, CellOrigin(e.x, e.y, e.upperElev), Vector2.zero, RowBase(e.y) + SlotSide, Color.white, false);
+            PutBox(s, CellOrigin(e.x, e.y, e.upperElev), Vector2.zero, RowBase(e.y) + SlotSide, ObjShade(e.upperElev), false);
         }
         if (!rims) return;
         for (int y = 0; y < h; y++)
@@ -948,7 +963,7 @@ public class LayeredTerrainGenerator : MonoBehaviour
                         int v = VRole(dh, k);
                         var s = Pick(First(Slot(row, v), Slot(sa.middle, v), Slot(sa.narrow, v)), x, y * 64 + k, 5);
                         if (s == null) { WarnOnce("stair" + t.styleId, "A stair style is missing a south stair sprite; those pieces are skipped."); continue; }
-                        PutBox(s, new Vector2(x * cellSize, yTop - (k + 1) * elevationStepWorld), new Vector2(cellSize, elevationStepWorld), RowBase(y) + SlotFace + 1, Color.white, fitFacesToStep); // +1: above the cliff face when it is not replaced
+                        PutBox(s, new Vector2(x * cellSize, yTop - (k + 1) * elevationStepWorld), new Vector2(cellSize, elevationStepWorld), RowBase(y) + SlotFace + 1, ObjShade(t.upperElev - k - 0.5f), fitFacesToStep); // +1: above the cliff face when it is not replaced
                     }
                     var up = Pick(sa.upperLanding, x, y, 6);
                     if (up != null) PutBox(up, CellOrigin(x, y, t.upperElev), Vector2.zero, RowBase(y) + SlotLanding, Shade(t.upperElev), false);
@@ -975,14 +990,14 @@ public class LayeredTerrainGenerator : MonoBehaviour
                 int j = Mathf.Abs(c.x - t.upperCells[0].x), e = t.upperElev - j; // visual elevation of this step
                 int order = RowBase(c.y) + SlotFace + 1;
                 var top = Pick(tops, c.x, c.y, 8);
-                if (top != null) PutBox(top, CellOrigin(c.x, c.y, e), Vector2.zero, order, Color.white, false, flipTop);
+                if (top != null) PutBox(top, CellOrigin(c.x, c.y, e), Vector2.zero, order, ObjShade(e), false, flipTop);
                 if (c.y != bottomRow) continue; // rows inside the stair rest on the next tread, no face needed
                 int n = e - t.lowerElev; float yTop = c.y * cellSize + e * elevationStepWorld;
                 for (int k = 0; k < n; k++)
                 {
                     var s = Pick(Slot(front, VRole(n, k)), c.x, k, 9);
                     if (s == null) { WarnOnce("tread" + t.styleId, "A stair style is missing a tread front sprite; those pieces are skipped."); continue; }
-                    PutBox(s, new Vector2(c.x * cellSize, yTop - (k + 1) * elevationStepWorld), new Vector2(cellSize, elevationStepWorld), order, Color.white, fitFacesToStep, flipFront);
+                    PutBox(s, new Vector2(c.x * cellSize, yTop - (k + 1) * elevationStepWorld), new Vector2(cellSize, elevationStepWorld), order, ObjShade(e - k - 0.5f), fitFacesToStep, flipFront);
                 }
             }
             foreach (var c in t.landingCells)
