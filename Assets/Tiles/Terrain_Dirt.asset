@@ -1,0 +1,56 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b0cf7c4479a5ea52eae599e3f1f58e14, type: 3}
+  m_Name: Terrain_Dirt
+  m_EditorClassIdentifier: Terrain::WFC.Terrain.TerrainDef
+  baseVariants:
+  - {fileID: -969523645, guid: b2aab1fa304d9b61a8a2cabc256cc1e3, type: 3}
+  - {fileID: -1788549156, guid: b2aab1fa304d9b61a8a2cabc256cc1e3, type: 3}
+  - {fileID: 54635387, guid: b2aab1fa304d9b61a8a2cabc256cc1e3, type: 3}
+  - {fileID: 232066824, guid: b2aab1fa304d9b61a8a2cabc256cc1e3, type: 3}
+  - {fileID: -702908189, guid: b2aab1fa304d9b61a8a2cabc256cc1e3, type: 3}
+  - {fileID: -768091487, guid: b2aab1fa304d9b61a8a2cabc256cc1e3, type: 3}
+  debugColor: {r: 0.6320754, g: 0.49379432, b: 0.372686, a: 1}
+  weight: 1
+  biomeCenter: 0.35
+  canNeighbor:
+  - {fileID: 11400000, guid: 14931abbd8d21902f974d4bf3b67e759, type: 2}
+  rules: []
+  priority: 0
+  overlay:
+    mode: 0
+    edges:
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    corners:
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    blob: {fileID: 0}
+    requireSides: 0
+    requireCorners: 0
+  noOverlayOnto: []

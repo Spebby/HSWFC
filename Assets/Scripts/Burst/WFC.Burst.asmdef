@@ -1,0 +1,14 @@
+{
+    "name": "Burst",
+    "rootNamespace": "WFC",
+    "references": [ "Core", "Unity.Burst" ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

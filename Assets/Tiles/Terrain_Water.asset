@@ -1,0 +1,55 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b0cf7c4479a5ea52eae599e3f1f58e14, type: 3}
+  m_Name: Terrain_Water
+  m_EditorClassIdentifier: Terrain::WFC.Terrain.TerrainDef
+  baseVariants:
+  - {fileID: 2056456464, guid: b2aab1fa304d9b61a8a2cabc256cc1e3, type: 3}
+  - {fileID: 104849849, guid: b2aab1fa304d9b61a8a2cabc256cc1e3, type: 3}
+  - {fileID: -916961379, guid: b2aab1fa304d9b61a8a2cabc256cc1e3, type: 3}
+  - {fileID: 2137332039, guid: b2aab1fa304d9b61a8a2cabc256cc1e3, type: 3}
+  - {fileID: 347331949, guid: b2aab1fa304d9b61a8a2cabc256cc1e3, type: 3}
+  debugColor: {r: 0.17568529, g: 0.41711184, b: 0.7924528, a: 1}
+  weight: 4
+  biomeCenter: 0.15
+  canNeighbor:
+  - {fileID: 11400000, guid: 44358bc666a0a0f0a9cc9b678efb1c78, type: 2}
+  rules: []
+  priority: 999
+  overlay:
+    mode: 2
+    edges:
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    corners:
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    - {fileID: 0}
+    blob: {fileID: 11400000, guid: e125e060cb5dc9650880cc1c1edd569c, type: 2}
+    requireSides: 0
+    requireCorners: 0
+  noOverlayOnto: []

@@ -6,7 +6,8 @@ extend-exclude = [
 	"Library/",
 	"_site/",
 	"node_modules",
-	"Documentation/api/*.yml"
+	"Documentation/api/*.yml",
+	"*.unity"
 ]
 
 [type.shell]
@@ -19,4 +20,7 @@ Ded = "Ded"
 ded = "ded"
 ser = "ser"
 SAV = "SAV"
+ba = "ba"
+iy = "iy"
+nd = "nd"
 Abberation = "Abberation"

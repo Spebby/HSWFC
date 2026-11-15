@@ -1,0 +1,65 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5dcc7babc57545119acab0bbdf30b004, type: 3}
+  m_Name: Water_Blob47Set
+  m_EditorClassIdentifier: Terrain::WFC.Terrain.Blob47Set
+  sprites:
+  - {fileID: 0}
+  - {fileID: 1487969039, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -1324820723, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 167743021, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -404874358, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 163837264, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 47905200, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 1749969633, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 1085189787, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 1023287642, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -712919922, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -1490179263, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 686407023, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -1719414393, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 810429898, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 1857572075, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -2070254631, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 1602340798, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -1169422386, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 1666248150, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -220992302, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -757445997, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -1325129576, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -1232709542, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 1929572687, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 3273015293093852658, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 179710833, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 767891645, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -1972218265, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 461713230, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -156956495, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 627657469, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -1010610770, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 506059870, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 1491350409, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 624164525, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -1364221565, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -431338604, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -1563916502, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 1847779337, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -1632332610, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -499085947, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -1383429436, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -1961690470, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -664628342, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: -1112409533, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  - {fileID: 309646227, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  sheet: {fileID: 2800000, guid: 494abd24be8ca821c83591ae947e7e1b, type: 3}
+  layout: 1
+  slotForSheetIndex: 
