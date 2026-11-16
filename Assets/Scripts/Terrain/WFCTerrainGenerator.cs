@@ -33,6 +33,10 @@ namespace WFC.Terrain {
         [Tooltip("Keep mandatory overlay sprites renderable. If the solve fails with them, it is retried without.")]
         public bool enforceVisualConstraints = true;
 
+        [Header("Rendering")]
+        public TerrainRenderStrategy renderStrategy = TerrainRenderStrategy.ChunkMesh;
+        [Tooltip("Chunk size, if set to -1, it will be a quarter of map size."), Min(-1)] public int meshChunkSize = -1;
+
         [Header("Display")] public View view = View.Final;
         public bool overlays = true;
         public bool autoFrameCamera = true;
@@ -43,12 +47,13 @@ namespace WFC.Terrain {
 
         public WFCStatus LastStatus { get; private set; }
 
-        CompiledTerrain _ct;
+        internal CompiledTerrain ct;
         WFCSolver _solver;
+        ITerrainRenderer _renderer;
         Transform _root;
         Sprite _pixel;
         bool _dirty;
-        float[] _regionNoise; // saved for visualisation purposes. Not actually used by anything.
+        internal float[] regionNoise; // saved for visualisation purposes. Not actually used by anything.
 
         void Start() {
             Generate();
@@ -68,7 +73,10 @@ namespace WFC.Terrain {
 #endif
         }
 
-        void OnDestroy() => _solver?.Dispose();
+        void OnDestroy() {
+            _solver?.Dispose();
+            _renderer?.Dispose();
+        }
 
 
         [ContextMenu("Generate")]
@@ -82,7 +90,7 @@ namespace WFC.Terrain {
             width  = Mathf.Max(1, width);
             height = Mathf.Max(1, height);
             try {
-                _ct = terrainSet.Compile();
+                ct = terrainSet.Compile();
             } catch (Exception e) {
                 Debug.LogError($"{nameof(WFCTerrainGenerator)}: {e.Message}", this);
                 return;
@@ -90,18 +98,18 @@ namespace WFC.Terrain {
 
             // If solver already exists, dispose of it
             _solver?.Dispose();
-            _solver = new WFCSolver(_ct.rules, width, height, useBurst ? new BurstWFCExecutor() : new ManagedIWFCExecutor());
+            _solver = new WFCSolver(ct.rules, width, height, useBurst ? new BurstWFCExecutor() : new ManagedIWFCExecutor());
 
             ulong s = (uint)seed;
-            _regionNoise = BiomeWeights.Noise(width, height, Mathf.Max(0.5f, biomeScale), s ^ BIOME_SALT);
+            regionNoise = BiomeWeights.Noise(width, height, Mathf.Max(0.5f, biomeScale), s ^ BIOME_SALT);
             // ^ save for visualiser. Not actually used for anything otherwise.
 
             float[] cw = regionalBias > 0f
-                ? BiomeWeights.Build(width, height, s ^ BIOME_SALT, _ct.weight, _ct.biomeCenter, regionalBias, biomeScale)
+                ? BiomeWeights.Build(width, height, s ^ BIOME_SALT, ct.weight, ct.biomeCenter, regionalBias, biomeScale)
                 : null;
 
             WFCStatus status = _solver.Solve(s, default, cw, maxAttempts, enforceVisualConstraints);
-            if (status != WFCStatus.Success && enforceVisualConstraints && _ct.rules.windowCount > 0) {
+            if (status != WFCStatus.Success && enforceVisualConstraints && ct.rules.windowCount > 0) {
                 Debug.LogWarning($"{nameof(WFCTerrainGenerator)}: no layout satisfied the mandatory overlay sprites ({status}). Retrying without them", this);
                 status = _solver.Solve(s, default, cw, maxAttempts, false);
             }
@@ -119,10 +127,37 @@ namespace WFC.Terrain {
             if (autoFrameCamera) FrameCamera();
         }
 
-        public int TerrainAt(int x, int y) => Layout == null || x < 0 || y < 0 || x >= width || y >= height ? -1 : Layout[y * width + x];
+        public int TerrainAt(int x, int y) => Layout == null || WFCSolver.IsOutOfBounds(x, y, width, height) ? -1 : Layout[y * width + x];
 
-        // ------------------------------------------------------------------ rendering
+        #region Rendering
+        void Render() {
+            _renderer?.Dispose();
+            _renderer = CreateRenderer(renderStrategy);
+            _renderer.Render(new TerrainRenderContext(this, _root));
+        }
+
+        ITerrainRenderer CreateRenderer(TerrainRenderStrategy strat) =>
+            strat switch {
+                TerrainRenderStrategy.ChunkMesh => new ChunkMeshTerrainRenderer(ResolveChunkSize(width, height, meshChunkSize)),
+                TerrainRenderStrategy.Tilemap   => new TilemapTerrainRenderer(),
+                _                               => throw new ArgumentOutOfRangeException(nameof(strat), strat, null)
+            };
+
+        static int ResolveChunkSize(int width, int height, int configuredSize) {
+            if (configuredSize > 0) {
+                return configuredSize;
+            }
+
+            const int TARGET_SHORT_AXIS = 2;
+
+            int shortSide = Mathf.Min(width, height);
+            return Mathf.Max(1, Mathf.CeilToInt((float)shortSide / TARGET_SHORT_AXIS));
+        }
+
         void ClearMap() {
+            _renderer?.Dispose();
+            _renderer = null;
+
             if (_root) {
                 if (Application.isPlaying) Destroy(_root.gameObject);
                 else DestroyImmediate(_root.gameObject);
@@ -132,96 +167,13 @@ namespace WFC.Terrain {
             _root.SetParent(transform, false);
         }
 
-        void Render() {
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    int t = Layout[y * width + x];
-                    switch (view) {
-                        case View.Logic:
-                            PutFlat(x, y, _ct.defs[t].debugColor, 0);
-                            continue;
-                        case View.Regions: {
-                            float noise = _regionNoise[y * width + x];
-                            PutFlat(x, y, new Color(noise, noise, noise), 0);
-                            continue;
-                        }
-                        case View.Final:
-                            break;
-                        default:
-                            throw new ArgumentOutOfRangeException();
-                    }
-
-                    Sprite sp = Pick(_ct.baseVariants[t], x, y, 1);
-                    if (sp) PutBox(sp, x, y, 0);
-                    else PutFlat(x, y, _ct.defs[t].debugColor, 0);
-                }
-            }
-
-            if (view == View.Final && overlays) RenderOverlays();
-        }
-
-        // The mask of overlay tile o around a cell has bit d set when the neighbour in direction d is o. Edges16 stacks several
-        // pieces for one mask, Blob47 gives one.
-        void RenderOverlays() {
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    int t = Layout[y * width + x];
-                    for (int o = 0; o < _ct.count; o++) {
-                        if (((_ct.overlayTargets[o] >> t) & 1UL) == 0) continue;
-                        int mask = 0;
-                        for (int d = 0; d < 8; d++) {
-                            if (TerrainAt(x + Dirs.Dx(d), y + Dirs.Dy(d)) == o)
-                                mask |= 1 << d;
-                        }
-
-                        if (mask == 0) continue;
-                        foreach (Sprite sp in _ct.overlayByMask[o][mask]) PutBox(sp, x, y, 1 + _ct.overlayRank[o]);
-                    }
-                }
-            }
-        }
-
-        // Sprite pivot placed so the sprite fills its cell like a tile.
-        void PutBox(Sprite sp, int x, int y, int order) {
-            GameObject go = new("s");
-            go.transform.SetParent(_root, false);
-            SpriteRenderer r = go.AddComponent<SpriteRenderer>();
-            r.sprite       = sp;
-            r.sortingOrder = order;
-            float   ppu  = sp.pixelsPerUnit;
-            Vector2 size = sp.rect.size / ppu, pivot = sp.pivot / ppu;
-            go.transform.localPosition = new Vector3(x * cellSize + (pivot.x - size.x * 0.5f) * (cellSize / size.x),
-                                                     y * cellSize + (pivot.y - size.y * 0.5f) * (cellSize / size.y),
-                                                     0f);
-            go.transform.localScale = new Vector3(cellSize / size.x, cellSize / size.y, 1f);
-        }
-
-        void PutFlat(int x, int y, Color color, int order) {
-            if (!_pixel) {
-                Texture2D tex = new(1, 1) { filterMode = FilterMode.Point };
-                tex.SetPixel(0, 0, Color.white);
-                tex.Apply();
-                _pixel = Sprite.Create(tex, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f), 1f);
-            }
-
-            GameObject go = new("f");
-            go.transform.SetParent(_root, false);
-            SpriteRenderer r = go.AddComponent<SpriteRenderer>();
-            r.sprite                   = _pixel;
-            r.color                    = color;
-            r.sortingOrder             = order;
-            go.transform.localPosition = new Vector3(x * cellSize, y * cellSize, 0f);
-            go.transform.localScale    = new Vector3(cellSize, cellSize, 1f);
-        }
-
         void FrameCamera() {
             if (!autoFrameCamera) return;
 
             Camera cam = Camera.main;
             if (!cam) return;
 
-            Vector3 centre = transform.position +
-                             new Vector3((width - 1) * 0.5f * cellSize, (height - 1) * 0.5f * cellSize, 0f);
+            Vector3 centre = transform.position + new Vector3((width - 1) * 0.5f * cellSize, (height - 1) * 0.5f * cellSize, 0f);
 
             cam.orthographic       = true;
             cam.transform.position = new Vector3(centre.x, centre.y, -10f);
@@ -230,23 +182,6 @@ namespace WFC.Terrain {
                 (width * cellSize * 0.5f + cellSize) / Mathf.Max(0.1f, cam.aspect)
             );
         }
-
-        static Sprite Pick(Sprite[] arr, int x, int y, int salt) {
-            if (arr == null || arr.Length == 0) return null;
-            return arr[(int)(hash_coord(x, y, salt) % (uint)arr.Length)];
-        }
-
-        /// <remarks>
-        /// This exists, rather than using a built-in func to have deterministic pseudo-random vals w/o maintaining random state.
-        /// Ensures that sprite selection remains consistent for a given tile coordinate and salt, independent of generation order.
-        /// This code was generated by an LLM. Appears to be based on Dwarf Fortress' TWBT coord_hash function.
-        /// </remarks>
-        static uint hash_coord(int a, int b, int c) {
-            unchecked {
-                uint h = (uint)(a * 374761393 + b * 668265263 + c * 1013904223);
-                h = (h ^ (h >> 13)) * 1274126177u;
-                return h ^ (h >> 16);
-            }
-        }
+        #endregion
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 
@@ -155,7 +156,7 @@ namespace WFC.Core {
                     for (int d = 0; d < 8; d++) {
                         int nx = x + Dirs.Dx(d);
                         int ny = y + Dirs.Dy(d);
-                        if (WFCState.IsOutOfBounds(nx, ny, width, height)) allowedTiles &= ~mustExistMask[d];
+                        if (IsOutOfBounds(nx, ny, width, height)) allowedTiles &= ~mustExistMask[d];
                     }
 
                     _initialDomains[y * width + x] &= allowedTiles;
@@ -165,6 +166,10 @@ namespace WFC.Core {
 
             bool IsBoundaryCell(int x, int y) => x == 0 || y == 0 || x == width - 1 || y == height - 1;
         }
+
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsOutOfBounds(int x, int y, int w, int h) => x < 0 || y < 0 || x >= w || y >= h;
 
         /// <summary> Releases all pinned buffers owned by solver. </summary>
         public void Dispose() {

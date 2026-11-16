@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Unity.Mathematics;
+using static WFC.Core.WFCSolver;
 
 
 namespace WFC.Core {
@@ -289,9 +290,6 @@ namespace WFC.Core {
                 }
             }
         }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static bool IsOutOfBounds(int x, int y, int w, int h) => x < 0 || y < 0 || x >= w || y >= h;
 
         bool Propagate() {
             while (_qCount > 0) {
