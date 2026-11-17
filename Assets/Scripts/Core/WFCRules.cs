@@ -1,7 +1,5 @@
-//   Support[d * Count + t]   tiles allowed in direction d from tile t (8 directions, bit order of Dirs)
-//   MustExist[d]             tiles that may only be placed where the neighbour in direction d is inside the grid
-//   Window*                  neighbourhood constraints (see WFCRulesBuilder.AddWindow)
 using System;
+using System.Runtime.CompilerServices;
 
 
 namespace WFC.Core {
@@ -9,12 +7,17 @@ namespace WFC.Core {
     /// Immutable, solver-ready rules. Build by WFCRulesBuilder.
     /// </summary>
     /// <remarks>
-    /// Support[d * Count + t]
+    /// Support[(d * Count + t) * WordsPerDomain + w] contains the tiles
+    /// allowed in direction d from tile t, stored as a multiword bitset.
+    /// MustExist[d * WordsPerDomain + w] contains tiles that require an
+    /// in-grid neighbour in direction d.
+    /// Window arrays are flattened by window index.
     /// </remarks>
     public sealed class WFCRules {
-        public const int MAX_TILES = 64;
+        /// <summary>64-bit words per tile domain.</summary>
+        public readonly int wordsPerDomain;
 
-        /// <summary>64-bit words per window feasibility table: one bit per (must, may) pair of 8-bit masks.</summary>
+        /// <summary>64-bit words per window feasibility table: one bit per (must, may) pair.</summary>
         public const int FEASIBLE_WORDS = 1024;
 
         public readonly int count;
@@ -23,31 +26,34 @@ namespace WFC.Core {
         public readonly ulong[] mustExist;
         public readonly int windowCount;
         public readonly ulong[] windowTargets;
-        public readonly byte[] windowMarker;
+        public readonly int[] windowMarker;
         public readonly ulong[] windowFeasible;
 
-        internal WFCRules(int count, float[] weight, ulong[] support, ulong[] mustExist,
-                          ulong[] windowTargets, byte[] windowMarker, ulong[] windowFeasible) {
+        internal WFCRules(int count, int wordsPerDomain, float[] weight, ulong[] support, ulong[] mustExist, ulong[] windowTargets, int[] windowMarker, ulong[] windowFeasible) {
             this.count          = count;
+            this.wordsPerDomain = wordsPerDomain;
             this.weight         = weight;
             this.support        = support;
             this.mustExist      = mustExist;
-            windowCount         = windowTargets.Length;
+            windowCount         = windowMarker.Length;
             this.windowTargets  = windowTargets;
             this.windowMarker   = windowMarker;
             this.windowFeasible = windowFeasible;
         }
 
-        public ulong FullMask => count == 64 ? ulong.MaxValue : (1UL << count) - 1;
+        /// <summary>Full mask for the first 64 tiles. Use a multiword mask for the complete domain.</summary>
+        public ulong FullMask => count >= 64 ? ulong.MaxValue : (1UL << count) - 1UL;
 
-        /// <summary>Null when consistent. Checks that b is allowed in direction d from a exactly when a is allowed in the opposite direction from b.</summary>
+        /// <summary>Null when consistent. Checks that adjacency rules are symmetric across opposite directions.</summary>
         public string Validate() {
-            for (int d = 0; d < 8; d++) {
-                int opposite = Dirs.Opposite(d);
+            for (int d = 0; d < Dirs.Count; d++) {
+                int opposite = (int)Dirs.Opposite((Direction)d);
                 for (int a = 0; a < count; a++) {
+                    int abOffset = (d * count + a) * wordsPerDomain;
                     for (int b = 0; b < count; b++) {
-                        bool ab = IsAllowed(a, d, b);
-                        bool ba = IsAllowed(b, opposite, a);
+                        int  baOffset = (opposite * count + b) * wordsPerDomain;
+                        bool ab       = Has(support, abOffset, b);
+                        bool ba       = Has(support, baOffset, a);
 
                         if (ab != ba) {
                             return $"Support is not symmetric: tile {a} -> {b} in direction {(Direction)d} disagrees with the opposite direction.";
@@ -55,10 +61,11 @@ namespace WFC.Core {
                     }
                 }
             }
-            return null;
 
-            bool IsAllowed(int tile, int direction, int neighbour) => ((support[direction * count + tile] >> neighbour) & 1UL) != 0UL;
+            return null;
         }
+
+        static bool Has(ulong[] mask, int offset, int tile) => (mask[offset + (tile >> 6)] & (1UL << (tile & 63))) != 0;
     }
 
     /// <summary>Collects logical rules and compiles them into a WFCRules.</summary>
@@ -69,15 +76,15 @@ namespace WFC.Core {
         readonly System.Collections.Generic.List<Window> _windows = new();
 
         struct DirectionalRule {
-            public int tile, dir;
-            public ulong allowed;
+            public int tile;
+            public Direction dir;
+            public ulong[] allowed;
             public bool mustExist;
         }
 
         struct Window {
             public int marker;
-            public ulong targets;
-            public ulong[] feasible;
+            public ulong[] targets, feasible;
         }
 
         /// <summary>
@@ -86,27 +93,56 @@ namespace WFC.Core {
         /// </summary>
         public bool diagonalRules;
 
-        public WFCRulesBuilder(int tileTileCount) {
-            if (tileTileCount is < 1 or > WFCRules.MAX_TILES) throw new ArgumentException("tileCount must be 1..64");
-            TileCount        = tileTileCount;
-            _weight   = new float[TileCount];
-            _cardinal = new ulong[TileCount];
-            _diagonal = new ulong[TileCount];
-            for (int i = 0; i < TileCount; i++) _weight[i] = 1f;
+        public WFCRulesBuilder(int tileCount) {
+            if (tileCount < 1) throw new ArgumentException("tileCount must be positive", nameof(tileCount));
+
+            TileCount      = tileCount;
+            WordsPerDomain = checked((tileCount + 63) / 64);
+            _weight        = new float[tileCount];
+            _cardinal      = new ulong[checked(tileCount * WordsPerDomain)];
+            _diagonal      = new ulong[checked(tileCount * WordsPerDomain)];
+
+            for (int i = 0; i < tileCount; i++) _weight[i] = 1f;
         }
 
         public int TileCount { get; }
+        public int WordsPerDomain { get; }
 
-        ulong Full => TileCount == 64 ? ulong.MaxValue : (1UL << TileCount) - 1;
-        static ulong Bit(int t) => 1UL << t;
-
-        void Check(int t) {
-            if (t < 0 || t >= TileCount) throw new ArgumentOutOfRangeException(nameof(TileCount));
+        void Check(int tile) {
+            if (tile < 0 || tile >= TileCount) throw new ArgumentOutOfRangeException(nameof(tile));
         }
 
-        public WFCRulesBuilder SetWeight(int tile, float w) {
+        static bool Has(ulong[] mask, int tile) => (mask[tile >> 6] & (1UL << (tile & 63))) != 0;
+
+        void SetDomainBit(ulong[] domains, int tile, int bit) {
+            int offset = tile * WordsPerDomain;
+            domains[offset + (bit >> 6)] |= 1UL << (bit & 63);
+        }
+
+        ulong[] FullWords() {
+            ulong[] full = new ulong[WordsPerDomain];
+            Array.Fill(full, ulong.MaxValue);
+            MaskFinalWord(full);
+            return full;
+        }
+
+        void MaskFinalWord(ulong[] mask) {
+            int remainder = TileCount & 63;
+            if (remainder == 0) return;
+            mask[WordsPerDomain - 1] &= (1UL << remainder) - 1UL;
+        }
+
+        static bool Any(ulong[] mask) {
+            foreach (ulong word in mask) {
+                if (word != 0) return true;
+            }
+
+            return false;
+        }
+
+        public WFCRulesBuilder SetWeight(int tile, float weight) {
             Check(tile);
-            _weight[tile] = Math.Max(1e-4f, w);
+            _weight[tile] = Math.Max(1e-4f, weight);
             return this;
         }
 
@@ -114,45 +150,75 @@ namespace WFC.Core {
         public WFCRulesBuilder AllowCardinal(int a, int b) {
             Check(a);
             Check(b);
-            _cardinal[a] |= Bit(b);
-            _cardinal[b] |= Bit(a);
+            SetDomainBit(_cardinal, a, b);
+            SetDomainBit(_cardinal, b, a);
             return this;
         }
 
-        /// <summary>a and b may touch across NE, SE, SW and NW (symmetric). Only used when DiagonalRules is on.</summary>
+        /// <summary>a and b may touch across NE, SE, SW and NW (symmetric). Only used when diagonalRules is on.</summary>
         public WFCRulesBuilder AllowDiagonal(int a, int b) {
             Check(a);
             Check(b);
-            _diagonal[a] |= Bit(b);
-            _diagonal[b] |= Bit(a);
+            SetDomainBit(_diagonal, a, b);
+            SetDomainBit(_diagonal, b, a);
             return this;
         }
 
         /// <summary>
-        /// Directional rule: the neighbour of <paramref name="tile"/> in <paramref name="dir"/> must be in <paramref name="allowed"/>.
-        /// The opposite direction is restricted accordingly, so the rule is symmetric. With mustExist the tile cannot be
-        /// placed where that neighbour would be outside the grid.
+        /// Restricts the allowed neighbours using a single 64-bit mask.
+        /// Only tile indices 0..63 can be specified by this overload.
         /// </summary>
         public WFCRulesBuilder Restrict(int tile, Direction dir, ulong allowed, bool mustExist = false) {
+            ulong[] mask = new ulong[WordsPerDomain];
+            mask[0] = allowed;
+            return Restrict(tile, dir, mask, mustExist);
+        }
+
+        /// <summary>
+        /// Restricts the allowed neighbours using one word per domain word.
+        /// </summary>
+        public WFCRulesBuilder Restrict(int tile, Direction dir, ReadOnlySpan<ulong> allowed, bool mustExist = false) {
             Check(tile);
-            _rules.Add(new DirectionalRule
-                          { tile = tile, dir = (int)dir, allowed = allowed & Full, mustExist = mustExist });
+            if (allowed.Length != WordsPerDomain)
+                throw new ArgumentException("allowed needs one entry per domain word", nameof(allowed));
+
+            ulong[] mask = allowed.ToArray();
+            MaskFinalWord(mask);
+            _rules.Add(new DirectionalRule { tile = tile, dir = dir, allowed = mask, mustExist = mustExist });
             return this;
         }
 
         /// <summary>
-        /// Neighbourhood constraint for visual availability. For every cell whose tile is in <paramref name="targets"/>,
-        /// the 8-bit mask "neighbour is the marker tile" must be renderable. Out-of-grid neighbours count as not marker.
-        /// Mask 0 must be renderable.
+        /// Adds a neighbourhood constraint using a single 64-bit target mask.
+        /// Only tile indices 0..63 can be specified by this overload.
         /// </summary>
         public WFCRulesBuilder AddWindow(int marker, ulong targets, bool[] renderable) {
+            ulong[] mask = new ulong[WordsPerDomain];
+            mask[0] = targets;
+            return AddWindow(marker, mask, renderable);
+        }
+
+        /// <summary>
+        /// Adds a neighbourhood constraint using one word per domain word.
+        /// </summary>
+        public WFCRulesBuilder AddWindow(int marker, ReadOnlySpan<ulong> targets, bool[] renderable) {
             Check(marker);
+            if (targets.Length != WordsPerDomain)
+                throw new ArgumentException("targets needs one entry per domain word", nameof(targets));
             if (renderable is not { Length: 256 })
-                throw new ArgumentException("renderable needs 256 entries");
-            if (!renderable[0]) throw new ArgumentException("mask 0 must be renderable");
-            targets &= Full;
-            if (targets == 0) return this;
-            _windows.Add(new Window { marker = marker, targets = targets, feasible = BuildFeasible(renderable) });
+                throw new ArgumentException("renderable needs 256 entries", nameof(renderable));
+            if (!renderable[0])
+                throw new ArgumentException("mask 0 must be renderable", nameof(renderable));
+
+            ulong[] mask = targets.ToArray();
+            MaskFinalWord(mask);
+            if (!Any(mask)) return this;
+
+            _windows.Add(new Window {
+                marker   = marker,
+                targets  = mask,
+                feasible = BuildFeasible(renderable)
+            });
             return this;
         }
 
@@ -160,26 +226,26 @@ namespace WFC.Core {
         /// Builds a lookup table indicating which combinations of required and possible
         /// marker neighbours admit at least one renderable configuration.
         /// </summary>
-        /// <param name="renderable">
-        /// A 256-entry lookup table indicating whether each 8-neighbour marker mask
-        /// can be rendered.
-        /// </param>
+        /// <param name="renderable">A 256-entry lookup table indicating whether each 8-neighbour marker mask can be rendered.</param>
         /// <returns>
         /// A bitset indexed by <c>(mustMask &lt;&lt; 8) | mayMask</c>. A set bit means
         /// that at least one renderable mask exists between the two bounds.
         /// </returns>
         public static ulong[] BuildFeasible(bool[] renderable) {
+            if (renderable is not { Length: 256 })
+                throw new ArgumentException("renderable needs 256 entries", nameof(renderable));
+            if (!renderable[0])
+                throw new ArgumentException("mask 0 must be renderable", nameof(renderable));
+
             ulong[] f = new ulong[WFCRules.FEASIBLE_WORDS];
             for (int mayMask = 0; mayMask < 256; mayMask++) {
                 for (int mustMask = 0; mustMask < 256; mustMask++) {
-                    // every required marker neighbour must also be a possible marker neighbour
+                    // Every required marker neighbour must also be possible.
                     if ((mustMask & ~mayMask) != 0) continue;
 
-                    // bits in free may independently be either present or absent
+                    // Enumerate every mask satisfying mustMask ⊆ mask ⊆ mayMask.
                     int  free = mayMask & ~mustMask;
                     bool ok   = false;
-
-                    // enumerate every mask satisfying mustMask ⊆ mask ⊆ mayMask
                     for (int sub = free;; sub = (sub - 1) & free) {
                         if (renderable[mustMask | sub]) {
                             ok = true;
@@ -190,8 +256,9 @@ namespace WFC.Core {
                     }
 
                     if (!ok) continue;
-                    // pack the (must, may) pair into a single 16-bit lookup
-                    int i = (mustMask << 8) | mayMask;
+
+                    // Pack the (must, may) pair into a single 16-bit lookup.
+                    int i = Dirs.PackWindowMasks(mustMask, mayMask);
                     f[i >> 6] |= 1UL << (i & 63);
                 }
             }
@@ -199,56 +266,64 @@ namespace WFC.Core {
             return f;
         }
 
-        /// <summary>
-        /// Builds the solver's adjacency and window constraint tables from the configured rules.
-        /// </summary>
-        /// <returns></returns>
+        /// <summary>Builds the solver's adjacency and window constraint tables from the configured rules.</summary>
         public WFCRules Build() {
-            ulong   full    = Full;
+            ulong[] full = FullWords();
 
-            // init support masks for every tile & dir
-            ulong[] support = new ulong[8 * TileCount];
+            // Initialise support masks for every tile and direction.
+            ulong[] support = new ulong[checked(Dirs.Count * TileCount * WordsPerDomain)];
             for (int t = 0; t < TileCount; t++) {
-                for (int d = 0; d < 8; d++) {
-                    ulong s;
-                    if (Dirs.IsCardinal(d)) s = _cardinal[t] | Bit(t);
-                    else s                    = diagonalRules ? _diagonal[t] | Bit(t) : full;
-                    support[d * TileCount + t] = s;
+                int tileOffset = t * WordsPerDomain;
+                for (int d = 0; d < Dirs.Count; d++) {
+                    Direction dir    = (Direction)d;
+                    int       offset = (d * TileCount + t) * WordsPerDomain;
+
+                    if (Dirs.IsCardinal(dir) || diagonalRules) {
+                        ulong[] source = Dirs.IsCardinal(dir) ? _cardinal : _diagonal;
+                        Array.Copy(source, tileOffset, support, offset, WordsPerDomain);
+                        support[offset + (t >> 6)] |= 1UL << (t & 63);
+                    } else {
+                        Array.Copy(full, 0, support, offset, WordsPerDomain);
+                    }
                 }
             }
 
-            // apply explicit dir rules to the support masks & prune invalid rules
-            ulong[] must = new ulong[8];
-            foreach (DirectionalRule r in _rules) {
-                support[r.dir * TileCount + r.tile] &= r.allowed;
-                int opp = Dirs.Opposite(r.dir);
+            // Apply explicit directional rules and their symmetric counterparts.
+            ulong[] must = new ulong[checked(Dirs.Count * WordsPerDomain)];
+            foreach (DirectionalRule rule in _rules) {
+                int offset = ((int)rule.dir * TileCount + rule.tile) * WordsPerDomain;
+                for (int w = 0; w < WordsPerDomain; w++) support[offset + w] &= rule.allowed[w];
+
+                int   opposite = (int)Dirs.Opposite(rule.dir);
+                ulong tileBit  = 1UL << (rule.tile & 63);
+                int   tileWord = rule.tile >> 6;
+
                 for (int x = 0; x < TileCount; x++) {
-                    if (((r.allowed >> x) & 1) != 0) continue;
-                    support[opp * TileCount + x] &= ~Bit(r.tile);
+                    if (Has(rule.allowed, x)) continue;
+                    int reverseOffset = (opposite * TileCount + x) * WordsPerDomain;
+                    support[reverseOffset + tileWord] &= ~tileBit;
                 }
 
-                // record tiles that must occur in specified dir at boundaries
-                if (r.mustExist) must[r.dir] |= Bit(r.tile);
+                // Record tiles that require an in-grid neighbour in this direction.
+                if (rule.mustExist) must[(int)rule.dir * WordsPerDomain + tileWord] |= tileBit;
             }
 
-            // flatten window constraints into contiguous arrays for the unmanaged kernel
+            // Flatten window constraints into contiguous arrays for the unmanaged kernel.
             int     wc       = _windows.Count;
-            ulong[] targets  = new ulong[wc];
-            byte[]  markers  = new byte[wc];
-            ulong[] feasible = new ulong[Math.Max(1, wc) * WFCRules.FEASIBLE_WORDS];
+            ulong[] targets  = new ulong[checked(wc * WordsPerDomain)];
+            int[]   markers  = new int[wc];
+            ulong[] feasible = new ulong[checked(Math.Max(1, wc) * WFCRules.FEASIBLE_WORDS)];
+
             for (int k = 0; k < wc; k++) {
-                targets[k] = _windows[k].targets;
-                markers[k] = (byte)_windows[k].marker;
-                Array.Copy(
-                    _windows[k].feasible,
-                    0,
-                    feasible,
-                    k * WFCRules.FEASIBLE_WORDS,
-                    WFCRules.FEASIBLE_WORDS);
+                Window window = _windows[k];
+                Array.Copy(window.targets, 0, targets, k * WordsPerDomain, WordsPerDomain);
+                markers[k] = window.marker;
+                Array.Copy(window.feasible, 0, feasible, k * WFCRules.FEASIBLE_WORDS, WFCRules.FEASIBLE_WORDS);
             }
 
             return new WFCRules(
                 TileCount,
+                WordsPerDomain,
                 (float[])_weight.Clone(),
                 support,
                 must,

@@ -34,8 +34,9 @@ namespace WFC.Terrain {
                 }
             }
 
-            if (ctx.view == WFCTerrainGenerator.View.Final && ctx.overlays)
+            if (ctx.view == WFCTerrainGenerator.View.Final && ctx.overlays) {
                 RenderOverlays(ctx, sink);
+            }
         }
 
         // The mask of overlay tile o around a cell has bit d set when the neighbour in direction d is o.
@@ -47,8 +48,9 @@ namespace WFC.Terrain {
                     for (int o = 0; o < ctx.terrain.count; o++) {
                         if (((ctx.terrain.overlayTargets[o] >> t) & 1UL) == 0) continue;
                         int mask = 0;
-                        for (int d = 0; d < 8; d++) {
-                            if (ctx.TerrainAt(x + Dirs.Dx(d), y + Dirs.Dy(d)) != o) continue;
+                        for (int d = 0; d < Dirs.Count; d++) {
+                            Direction dir = (Direction)d;
+                            if (ctx.TerrainAt(x + Dirs.Dx(dir), y + Dirs.Dy(dir)) != o) continue;
                             mask |= 1 << d;
                         }
 

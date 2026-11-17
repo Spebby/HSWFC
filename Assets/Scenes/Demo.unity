@@ -288,8 +288,8 @@ MonoBehaviour:
   terrainSet: {fileID: 11400000, guid: 087f3db9ae2b4ba68a445c183fb6b0d9, type: 2}
   cellSize: 1
   seed: 7
-  width: 256
-  height: 256
+  width: 32
+  height: 32
   regionalBias: 1
   biomeScale: 7
   maxAttempts: 100

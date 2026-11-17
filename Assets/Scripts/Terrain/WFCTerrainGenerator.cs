@@ -43,7 +43,7 @@ namespace WFC.Terrain {
         public bool regenerateOnValidate = true;
 
         /// <summary>Tile index per cell (y * width + x) of the last successful generation, otherwise null.</summary>
-        public byte[] Layout { get; private set; }
+        public int[] Layout { get; private set; }
 
         public WFCStatus LastStatus { get; private set; }
 
@@ -98,7 +98,7 @@ namespace WFC.Terrain {
 
             // If solver already exists, dispose of it
             _solver?.Dispose();
-            _solver = new WFCSolver(ct.rules, width, height, useBurst ? new BurstWFCExecutor() : new ManagedIWFCExecutor());
+            _solver = new WFCSolver(ct.rules, width, height, regionalBias > 0f, useBurst ? new BurstWFCExecutor() : new ManagedIWFCExecutor());
 
             ulong s = (uint)seed;
             regionNoise = BiomeWeights.Noise(width, height, Mathf.Max(0.5f, biomeScale), s ^ BIOME_SALT);
@@ -122,7 +122,7 @@ namespace WFC.Terrain {
                 return;
             }
 
-            Layout = (byte[])_solver.Layout.Clone();
+            Layout = (int[])_solver.Layout.Clone();
             Render();
             if (autoFrameCamera) FrameCamera();
         }

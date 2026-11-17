@@ -24,7 +24,7 @@ namespace WFC.Terrain {
     public sealed class TerrainRenderContext {
         public readonly Transform root;
         public readonly CompiledTerrain terrain;
-        public readonly byte[] layout;
+        public readonly int[] layout;
         public readonly float[] regionNoise;
 
         public readonly int width, height;

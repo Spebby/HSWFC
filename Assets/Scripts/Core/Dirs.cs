@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 
 
 namespace WFC.Core {
-    public enum Direction {
+    public enum Direction : byte {
         N = 0,
         NE = 1,
         E = 2,
@@ -20,28 +20,31 @@ namespace WFC.Core {
     /// +y is north. A direction index d corresponds to mask bit (1 << d)
     /// </remarks>
     public static class Dirs {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int Opposite(int d) => (d + 4) & 7;
+        public static readonly int Count = 8;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsCardinal(int d) => (d & 1) == 0;
+        public static Direction Opposite(Direction d) => (Direction)(((int)d + 4) & 7);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int Dx(int d) {
-            return d switch {
-                1 or 2 or 3 => 1,
-                5 or 6 or 7 => -1,
-                _           => 0
+        public static bool IsCardinal(Direction d) => ((int)d & 1) == 0;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int Dx(Direction d) =>
+            d switch {
+                Direction.NE or Direction.E or Direction.SE => 1,
+                Direction.SW or Direction.W or Direction.NW => -1,
+                _                                           => 0
             };
-        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int Dy(int d) {
-            return d switch {
-                0 or 1 or 7 => 1,
-                3 or 4 or 5 => -1,
-                _           => 0
+        public static int Dy(Direction d) =>
+            d switch {
+                Direction.N or Direction.NE or Direction.NW => 1,
+                Direction.SE or Direction.S or Direction.SW => -1,
+                _                                           => 0
             };
-        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int PackWindowMasks(int mustMask, int mayMask) => (mustMask << Dirs.Count) | mayMask;
     }
 }

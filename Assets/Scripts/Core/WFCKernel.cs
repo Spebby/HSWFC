@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Unity.Mathematics;
+using static WFC.Core.Dirs;
 using static WFC.Core.WFCSolver;
 
 
@@ -17,29 +18,38 @@ namespace WFC.Core {
     /// <summary>Everything the kernel reads and writes. Plain blittable data; the solver fills it from pinned arrays.</summary>
     public unsafe struct WFCKernelArgs {
         public int width, height, tileCount, windowCount, maxAttempts;
+        public int wordsPerDomain; // ceil(tileCount / 64)
         public ulong seed;
-        public byte hasPerCellWeights; // 1 = cellWeights is [width*height*count], 0 = use weight[count]
-        public float* weights;
-        public float* cellWeights;
-        public ulong* supportMasks;        // [8 * count]
-        public ulong* windowTargets;       // [windowCount]
-        public byte* windowMarker;         // [windowCount]
-        public ulong* windowFeasibleMasks; // [windowCount * WFCRules.FeasibleWords]
-        public ulong* initialDomains;      // [width*height] starting domains
-        public byte* result;               // [width*height] tile index per cell, written on success
+        public byte hasPerCellWeights;     // 1 = cellWeights is [width*height*count], 0 = use weight[count]
+        public float* weights;             // [tileCount]
+        public float* cellWeights;         // [cellCount * tileCount], optional
+        public ulong* supportMasks;        // [8][tileCount][wordsPerDomain]
+        public ulong* windowTargets;       // [windowCount][wordsPerDomain]
+        public int* windowMarker;          // [windowCount]
+        public ulong* windowFeasibleMasks; // [windowCount][WFCRules.FEASIBLE_WORDS]
+        public ulong* initialDomains;      // [cellCount][wordsPerDomain]
+        public int* result;                // [cellCount] tile index per cell, written on success
         public int* resultInfo;            // [3]: status, failCell, attempts
 
-        // sized by solver
-        public ulong* domain;           // [N]
-        public ulong* baseDomains;      // [N]
-        public float* weightLogWeights; // [perCell ? N*count : count]
-        public float* heapKeys;         // [N]
-        public int* heap;               // [N]
-        public int* heapPos;            // [N]
-        public int* queue;              // [2N + 1]
-        public int* changedCells;       // [N]
-        public byte* queuedFlags;       // [2N]
-        public byte* changedFlags;      // [N]
+        // working domain buffers: [cellCount][wordsPerDomain]
+        public ulong* domain;
+        public ulong* baseDomains;
+        public ulong* scratch;
+
+        // [cellCount * tileCount] with per-cell weights, otherwise [tileCount].
+        public float* weightLogWeights;
+
+        // Indexed min-heap; keys and pos indexed by cell
+        public float* heapKeys; // [cellCount]
+        public int* heap;       // [cellCount]
+        public int* heapPos;    // [cellCount]
+
+        // ring queue
+        public int* queue;         // [2 * cellCount + 1]
+
+        public int* changedCells;  // [cellCount]
+        public byte* queuedFlags;  // [2 * cellCount] adjacency and window flags
+        public byte* changedFlags; // [cellCount]
     }
 
     /// <summary>
@@ -73,25 +83,20 @@ namespace WFC.Core {
         readonly ulong* _windowTargets;
         readonly ulong* _windowFeasibleMasks;
         readonly ulong* _initialDomains;
-        readonly byte* _windowMarker;
+        readonly int* _windowMarker;
         #endregion
 
         #region Output buffers
-        readonly byte* _result;
+        readonly int* _result;
         readonly int* _resultInfo; // Output metadata
         #endregion
 
         #region Working state
+        readonly int _wordsPerDomain;
         readonly ulong* _domains;
         readonly ulong* _baseDomains;
+        readonly ulong* _scratch;
         readonly float* _weightLogWeights; // Precomputed weight * log(weight), used by Shannon entropy.
-        #endregion
-
-        #region Queue
-        readonly int* _queue;        // Encoded entries: cell * 2 + kind (adjacency or window check).
-        readonly byte* _queuedFlags; // Prevents duplicate queue entries; indexed by kind * cellCount + cell.
-        int _qHead, _qTail, _qCount;
-        readonly int _qCap;
         #endregion
 
         #region Changed-cell tracking
@@ -100,17 +105,20 @@ namespace WFC.Core {
         int _changedCount;
         #endregion
 
-        #region Entropy heap
-        readonly float* _heapKeys; // Entropy priorities indexed by cell.
-        readonly int* _heap;
-        readonly int* _heapPos; // Reverse heap lookup: cell -> heap index, or -1 if absent.
-        int _heapCount;
-        #endregion
+        PropagationQueue _queue;
+        EntropyHeap _heap;
 
         #region Misc
         SplitMix64 _rng;
         int _failedCell;
         #endregion
+
+        Domain D(int cell) => new(_domains, cell, _wordsPerDomain);
+
+        // support masks for a source tile in a given direction
+        Domain S(Direction dir, int tile) => new(_supportMasks, (int)dir * _tileCount + tile, _wordsPerDomain);
+        // target tile mask for a window rule
+        Domain Wt(int window) => new(_windowTargets, window, _wordsPerDomain);
 
         public WFCState(ref WFCKernelArgs a) {
             _w                   = a.width;
@@ -123,30 +131,25 @@ namespace WFC.Core {
             _weight              = a.weights;
             _cellWeights         = a.cellWeights;
             _weightLogWeights    = a.weightLogWeights;
-            _heapKeys            = a.heapKeys;
             _supportMasks        = a.supportMasks;
             _windowTargets       = a.windowTargets;
             _windowFeasibleMasks = a.windowFeasibleMasks;
             _initialDomains      = a.initialDomains;
+            _wordsPerDomain      = a.wordsPerDomain;
             _domains             = a.domain;
             _baseDomains         = a.baseDomains;
+            _scratch             = a.scratch;
             _windowMarker        = a.windowMarker;
             _result              = a.result;
-            _queuedFlags         = a.queuedFlags;
             _changedFlags        = a.changedFlags;
             _resultInfo          = a.resultInfo;
-            _heap                = a.heap;
-            _heapPos             = a.heapPos;
-            _queue               = a.queue;
             _changedCells        = a.changedCells;
             _rng                 = new SplitMix64(a.seed);
-            _qHead               = 0;
-            _qTail               = 0;
-            _qCount              = 0;
-            _qCap                = 2 * a.width * a.height + 1;
             _changedCount        = 0;
-            _heapCount           = 0;
             _failedCell          = -1;
+
+            _queue = new PropagationQueue(a.queue, a.queuedFlags, _cellCount);
+            _heap  = new EntropyHeap(a.heapKeys, a.heap, a.heapPos);
         }
 
         public void Execute() {
@@ -158,9 +161,9 @@ namespace WFC.Core {
             }
 
             // check for cells with no initially valid tiles.
+            Domain.CopyRange(_domains, _initialDomains, _cellCount, _wordsPerDomain);
             for (int i = 0; i < _cellCount; i++) {
-                _domains[i] = _initialDomains[i];
-                if (_domains[i] != 0UL) continue;
+                if (!D(i).IsEmpty) continue;
                 Finish((int)WFCStatus.Unsatisfiable, i, 0);
                 return;
             }
@@ -169,8 +172,8 @@ namespace WFC.Core {
             // establish all deductions possible from initial domains before letting the solver work
             ResetSearchState();
             for (int i = 0; i < _cellCount; i++) {
-                Enqueue(i, 0);
-                if (_windowCount > 0) Enqueue(i, 1);
+                _queue.Enqueue(i, 0);
+                if (_windowCount > 0) _queue.Enqueue(i, 1);
             }
 
             if (!Propagate()) {
@@ -179,28 +182,23 @@ namespace WFC.Core {
             }
             #endregion
 
-            for (int i = 0; i < _cellCount; i++) {
-                _baseDomains[i] = _domains[i];
-            }
-
+            Domain.CopyRange(_baseDomains, _domains, _cellCount, _wordsPerDomain);
             for (int attempt = 1; attempt <= _maxAttempts; attempt++) {
-                for (int i = 0; i < _cellCount; i++) _domains[i] = _baseDomains[i];
+                Domain.CopyRange(_domains, _baseDomains, _cellCount, _wordsPerDomain);
                 ResetSearchState();
                 // init entropy heat w/ all cells that still have multiple candidates
                 for (int i = 0; i < _cellCount; i++) {
-                    ulong domain        = _domains[i];
-                    bool  isUncollapsed = (domain & (domain - 1UL)) != 0UL;
-                    if (isUncollapsed) HeapUpdate(i, Entropy(i));
+                    if (!D(i).IsSingle) _heap.Update(i, Entropy(i));
                 }
 
                 bool ok = true;
                 // collapse lowest-entropy cell
-                while (_heapCount > 0) {
-                    int cell = _heap[0];
+                while (_heap.Count > 0) {
+                    int cell = _heap.Min;
                     int pick = PickTile(cell);
 
                     // collapse cell & propagate constraints
-                    _domains[cell] = 1UL << pick;
+                    D(cell).SetOnly(pick);
                     OnDomainChanged(cell);
                     if (!Propagate()) {
                         ok = false;
@@ -215,7 +213,7 @@ namespace WFC.Core {
                 if (!ok) continue;
 
                 // extract resolved tile index & report success
-                for (int i = 0; i < _cellCount; i++) _result[i] = (byte)math.tzcnt(_domains[i]);
+                for (int i = 0; i < _cellCount; i++) _result[i] = D(i).FirstSet();
                 Finish((int)WFCStatus.Success, -1, attempt);
                 return;
             }
@@ -230,70 +228,44 @@ namespace WFC.Core {
         }
 
         /// <summary>
-        /// Clear transient state used by the solver's search (prop queues, queued flags, bookkeeping).
+        /// Clear transient propagation and domain-change state between search attempts.
         /// </summary>
         void ResetSearchState() {
-            for (int i = 0; i < 2 * _cellCount; i++) _queuedFlags[i] = 0;
+            _queue.Reset();
+
             for (int i = 0; i < _cellCount; i++) {
                 _changedFlags[i] = 0;
-                _heapPos[i]      = -1;
             }
 
-            _qHead        = 0;
-            _qTail        = 0;
-            _qCount       = 0;
             _changedCount = 0;
-            _heapCount    = 0;
+            _heap.Reset(_cellCount);
         }
 
-        // ---- work queue: entries are cell*2 + kind, kind 0 = push the cell's domain to its neighbours, 1 = check windows centred on it
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void Enqueue(int cell, int kind) {
-            int f = kind * _cellCount + cell;
-            if (_queuedFlags[f] != 0) return;
-            _queuedFlags[f] = 1;
-            _queue[_qTail]  = cell * 2 + kind;
-            if (++_qTail == _qCap) _qTail = 0;
-            _qCount++;
-        }
-
-        int Dequeue() {
-            int entry = _queue[_qHead];
-            if (++_qHead == _qCap) {
-                _qHead = 0;
-            }
-
-            _qCount--;
-
-            int kind = entry & 1;
-            int cell = entry >> 1;
-            _queuedFlags[kind * _cellCount + cell] = 0;
-            return entry;
-        }
-
         void OnDomainChanged(int cell) {
             if (_changedFlags[cell] == 0) {
                 _changedFlags[cell]               = 1;
                 _changedCells[_changedCount++] = cell;
             }
 
-            Enqueue(cell, 0);
+            _queue.Enqueue(cell, 0);
             if (_windowCount <= 0) return;
 
-            // enqueue window neighbours
+            // enqueue window neighbours b/c a changed cell can affect windows centred on itself or any of its neighbours
             int jx = cell % _w, jy = cell / _w;
             for (int dy = -1; dy <= 1; dy++) {
                 for (int dx = -1; dx <= 1; dx++) {
                     int nx = jx + dx, ny = jy + dy;
                     if (IsOutOfBounds(nx, ny, _w, _h)) continue;
-                    Enqueue(ny * _w + nx, 1);
+                    _queue.Enqueue(ny * _w + nx, 1);
                 }
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         bool Propagate() {
-            while (_qCount > 0) {
-                int  entry         = Dequeue();
+            while (_queue.Count > 0) {
+                int  entry         = _queue.Dequeue();
                 int  cell          = entry >> 1;
                 bool isWindowCheck = (entry & 1) != 0;
 
@@ -307,137 +279,127 @@ namespace WFC.Core {
             return true;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         bool PropagateAdjacency(int cell) {
-            ulong sourceDomain = _domains[cell];
-            int   x            = cell % _w, y = cell / _w;
+            Domain source  = D(cell);
+            Domain scratch = new(_scratch, _wordsPerDomain);
+            int    x       = cell % _w, y = cell / _w;
 
-            for (int direction = 0; direction < 8; direction++) {
-                int nx = x + Dx(direction), ny = y + Dy(direction);
+            for (int d = 0; d < Count; d++) {
+                Direction dir  = (Direction)d;
+                int       nx = x + Dx(dir), ny = y + Dy(dir);
                 if (IsOutOfBounds(nx, ny, _w, _h)) continue;
 
-                int neighbour = ny * _w + nx;
-                ulong supportedTiles = GetSupportMask(
-                    sourceDomain, direction, _supportMasks, _tileCount
-                );
+                // build union of tiles supported by every tile in the src domain
+                scratch.ClearAll();
+                for (int w = 0; w < _wordsPerDomain; w++) {
+                    ulong bits = source.Word(w);
 
-                if (!ReduceDomain(neighbour, supportedTiles)) return false;
+                    while (bits != 0UL) {
+                        int tile = Domain.FirstSetInWord(w, bits);
+                        bits &= bits - 1UL; // clear lowest set bit
+
+                        Domain support = S(dir, tile);
+                        for (int j = 0; j < _wordsPerDomain; j++) {
+                            scratch.OrWord(j, support.Word(j));
+                        }
+                    }
+                }
+
+                // neighbour can only contain tiles supported by src domain
+                if (!ReduceDomain(ny * _w + nx, scratch)) return false;
             }
-
             return true;
         }
 
+        /// <summary>
+        /// Intersects a cell's domain with its supported tiles and schedules propagation if it changed.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static ulong GetSupportMask(ulong domain, int direction, ulong* supportMasks, int tileCount) {
-            ulong* support = supportMasks + direction * tileCount;
-            ulong  mask    = 0UL;
-
-            while (domain != 0UL) {
-                int tile = math.tzcnt(domain);
-                mask   |= support[tile];
-                domain &= domain - 1UL;
-            }
-
-            return mask;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        bool ReduceDomain(int cell, ulong supportedTiles) {
-            ulong domain        = _domains[cell];
-            ulong reducedDomain = domain & supportedTiles;
-
-            if (reducedDomain == domain) return true;
-            if (reducedDomain == 0UL) {
-                _failedCell = cell;
-                return false;
-            }
-
-            _domains[cell] = reducedDomain;
+        bool ReduceDomain(int cell, Domain supported) {
+            Domain d = D(cell);
+            if (!d.AndWith(supported)) return true;
+            if (d.IsEmpty) { _failedCell = cell; return false; }
             OnDomainChanged(cell);
             return true;
         }
 
+        #region Window Constraints
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         bool CheckWindows(int cell) {
-            int cx = cell % _w, cy = cell / _w;
+            int    cx     = cell % _w, cy = cell / _w;
+            Domain centre = D(cell);
 
             for (int window = 0; window < _windowCount; window++) {
-                ulong centreDomain = _domains[cell];
-                ulong targetTiles  = _windowTargets[window];
+                Domain target = Wt(window);
+                if (!centre.Intersects(target)) continue;
 
-                if ((centreDomain & targetTiles) == 0UL) continue;
-
-                ulong markerBit = 1UL << _windowMarker[window];
-                GetWindowMarkerMasks(cx, cy, markerBit, out int mustMask, out int mayMask);
-
+                int marker = _windowMarker[window];
+                GetWindowMarkerMasks(cx, cy, marker, out int mustMask, out int mayMask);
                 ulong* feasible = _windowFeasibleMasks + (long)window * WFCRules.FEASIBLE_WORDS;
 
                 if (!IsWindowRenderable(feasible, mustMask, mayMask)) {
-                    if (!PruneWindowCentre(cell, centreDomain, targetTiles)) return false;
+                    centre.AndNotWith(target);
+                    if (centre.IsEmpty) { _failedCell = cell; return false; }
+                    OnDomainChanged(cell);
                     continue;
                 }
+                if (!centre.IsSingle) continue;
+                // neighbour loop unchanged apart from passing `marker`
 
-                // Neighbour pruning is only useful once the centre is committed.
-                bool centreIsCollapsed = (centreDomain & (centreDomain - 1UL)) == 0UL;
-                if (!centreIsCollapsed) continue;
-
-                for (int direction = 0; direction < 8; direction++) {
-                    int nx = cx + Dx(direction), ny = cy + Dy(direction);
+                for (int d = 0; d < Count; d++) {
+                    Direction dir = (Direction)d;
+                    int nx = cx + Dx(dir), ny = cy + Dy(dir);
                     if (IsOutOfBounds(nx, ny, _w, _h)) continue;
 
                     int neighbour = ny * _w + nx;
-                    if (!PruneWindowNeighbour(
-                            neighbour, direction, markerBit, mustMask, mayMask, feasible
-                        )) return false;
+                    if (!PruneWindowNeighbour(neighbour, dir, marker, mustMask, mayMask, feasible)) {
+                        return false;
+                    }
                 }
             }
 
             return true;
         }
 
+        /// <summary>Builds the marker occupancy bounds around a window centre.</summary>
+        /// <param name="mustMask">Contains directions where the marker is possible.</param>
+        /// <param name="mayMask">Contains directions where the marker is guaranteed.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void GetWindowMarkerMasks(int cx, int cy, ulong markerBit, out int mustMask, out int mayMask) {
-            mustMask = 0;
-            mayMask  = 0;
-
-            for (int d = 0; d < 8; d++) {
-                int nx = cx + Dx(d), ny = cy + Dy(d);
+        void GetWindowMarkerMasks(int cx, int cy, int marker, out int mustMask, out int mayMask) {
+            mustMask = 0; mayMask = 0;
+            for (int d = 0; d < Count; d++) {
+                Direction dir = (Direction)d;
+                int nx = cx + Dx(dir), ny = cy + Dy(dir);
                 if (IsOutOfBounds(nx, ny, _w, _h)) continue;
 
-                ulong neighbourDomain = _domains[ny * _w + nx];
-                if ((neighbourDomain & markerBit) == 0UL) continue;
+                Domain nd = D(ny * _w + nx);
+                if (!nd.Has(marker)) continue;
 
                 mayMask |= 1 << d;
-                if (neighbourDomain == markerBit) mustMask |= 1 << d;
+                if (nd.IsOnly(marker)) mustMask |= 1 << d;
             }
         }
 
+        /// <summary>
+        /// Feasibility is indexed by a 16-bit pair. mustMask in the high byte and mayMask in the low byte.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static bool IsWindowRenderable(ulong* feasible, int mustMask, int mayMask) =>
-            Bit(feasible, (mustMask << 8) | mayMask);
-
-        bool PruneWindowCentre(int cell, ulong centreDomain, ulong targetTiles) {
-            ulong reducedDomain = centreDomain & ~targetTiles;
-
-            if (reducedDomain == 0UL) {
-                _failedCell = cell;
-                return false;
-            }
-
-            _domains[cell] = reducedDomain;
-            OnDomainChanged(cell);
-            return true;
-        }
+            Bit(feasible, PackWindowMasks(mustMask, mayMask));
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        bool PruneWindowNeighbour(int cell, int direction, ulong markerBit, int mustMask, int mayMask, ulong* feasible) {
-            ulong neighbourDomain = _domains[cell];
-            if ((neighbourDomain & markerBit) == 0UL || neighbourDomain == markerBit) {
-                return true;
-            }
+        bool PruneWindowNeighbour(int cell, Direction direction, int marker, int mustMask, int mayMask, ulong* feasible) {
+            Domain nd              = D(cell);
+            if (!nd.Has(marker) || nd.IsOnly(marker)) return true;
 
-            int directionBit         = 1 << direction;
+            int directionBit         = 1 << (int)direction;
             int mustWithoutDirection = mustMask & ~directionBit;
             int mayWithoutDirection  = mayMask & ~directionBit;
 
+            // test two possibilities for this neighbour
+            // 1. it contains the marker
+            // 2. it does not contain the marker
             bool markerIsFeasible = IsWindowRenderable(
                 feasible,
                 mustWithoutDirection | directionBit,
@@ -453,11 +415,11 @@ namespace WFC.Core {
                     _failedCell = cell;
                     return false;
                 case false:
-                    _domains[cell] = neighbourDomain & ~markerBit;
+                    nd.Clear(marker);
                     break;
                 default: {
                     if (otherIsFeasible) return true;
-                    _domains[cell] = markerBit;
+                    nd.SetOnly(marker);
                     break;
                 }
             }
@@ -468,158 +430,82 @@ namespace WFC.Core {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static bool Bit(ulong* t, int i) => ((t[i >> 6] >> (i & 63)) & 1UL) != 0UL;
+        #endregion
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static int Dx(int d) {
-            return d switch {
-                1 or 2 or 3 => 1,
-                5 or 6 or 7 => -1,
-                _           => 0
-            };
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static int Dy(int d) {
-            return d switch {
-                0 or 1 or 7 => 1,
-                3 or 4 or 5 => -1,
-                _           => 0
-            };
-        }
-
-        // ---- weights, entropy, collapse
+        #region Weights, Entropy & Collapse
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         float WeightOf(int cell, int t) => _perCellWeights ? _cellWeights[(long)cell * _tileCount + t] : _weight[t];
 
+        /// <remarks> A small random offset breaks ties between otherwise equivalent cells. </remarks>
+        /// <returns>Shannon entropy of a cell's current weighted domain.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         float Entropy(int cell) {
-            ulong remainingTiles = _domains[cell];
-            float weightSum      = 0f, weightLogWeightSum = 0f;
+            Domain domain    = D(cell);
+            float  weightSum = 0f, weightLogWeightSum = 0f;
             float* weightLogWeights = _perCellWeights
                 ? _weightLogWeights + (long)cell * _tileCount
                 : _weightLogWeights;
 
-            while (remainingTiles != 0UL) {
-                int tile = math.tzcnt(remainingTiles);
-                remainingTiles &= remainingTiles - 1UL;
+            for (int w = 0; w < _wordsPerDomain; w++) {
+                ulong bits = domain.Word(w);
 
-                weightSum          += WeightOf(cell, tile);
-                weightLogWeightSum += weightLogWeights[tile];
+                while (bits != 0UL) {
+                    int tile = Domain.FirstSetInWord(w, bits);
+                    bits &= bits - 1UL;
+
+                    weightSum          += WeightOf(cell, tile);
+                    weightLogWeightSum += weightLogWeights[tile];
+                }
             }
 
             return math.log(weightSum) - weightLogWeightSum / weightSum + _rng.NextFloat() * 1e-3f;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         int PickTile(int cell) {
-            ulong remainingTiles = _domains[cell];
-            float weightSum      = 0f;
+            Domain domain    = D(cell);
+            float  weightSum = 0f;
 
-            while (remainingTiles != 0UL) {
-                int tile = math.tzcnt(remainingTiles);
-                remainingTiles &= remainingTiles - 1UL;
-                weightSum      += WeightOf(cell, tile);
+            for (int w = 0; w < _wordsPerDomain; w++) {
+                ulong bits = domain.Word(w);
+                while (bits != 0UL) {
+                    int tile = Domain.FirstSetInWord(w, bits);
+                    bits      &= bits - 1UL;
+                    weightSum += WeightOf(cell, tile);
+                }
             }
 
             float randomWeight = _rng.NextFloat() * weightSum;
             int   selectedTile = 0;
-            remainingTiles = _domains[cell];
 
-            while (remainingTiles != 0UL) {
-                int tile = math.tzcnt(remainingTiles);
-                remainingTiles &= remainingTiles - 1UL;
+            for (int w = 0; w < _wordsPerDomain; w++) {
+                ulong bits = domain.Word(w);
+                while (bits != 0UL) {
+                    int tile = Domain.FirstSetInWord(w, bits);
+                    bits &= bits - 1UL;
 
-                selectedTile =  tile;
-                randomWeight -= WeightOf(cell, tile);
-                if (randomWeight <= 0f) break;
+                    selectedTile =  tile;
+                    randomWeight -= WeightOf(cell, tile);
+                    if (randomWeight <= 0f) return selectedTile;
+                }
             }
 
             return selectedTile;
         }
 
+        /// <summary> Commit accumulated domain changes to the entropy heap after propagation. </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void FlushChanged() {
             for (int i = 0; i < _changedCount; i++) {
                 int cell = _changedCells[i];
                 _changedFlags[cell] = 0;
 
-                ulong domain      = _domains[cell];
-                bool  isCollapsed = (domain & (domain - 1UL)) == 0UL;
-                if (isCollapsed) HeapRemove(cell);
-                else HeapUpdate(cell, Entropy(cell));
+                if (D(cell).IsSingle) _heap.Remove(cell);
+                else _heap.Update(cell, Entropy(cell));
             }
 
             _changedCount = 0;
         }
-
-        // ---- indexed min-heap over key[]
-        void HeapSwap(int a, int b) {
-            int ca = _heap[a], cb = _heap[b];
-            _heap[a]     = cb;
-            _heap[b]     = ca;
-            _heapPos[cb] = a;
-            _heapPos[ca] = b;
-        }
-
-        void SiftUp(int i) {
-            while (i > 0) {
-                int p = (i - 1) >> 1;
-                if (_heapKeys[_heap[i]] < _heapKeys[_heap[p]]) {
-                    HeapSwap(i, p);
-                    i = p;
-                } else break;
-            }
-        }
-
-        void SiftDown(int heapIndex) {
-            while (true) {
-                int leftChild  = 2 * heapIndex + 1;
-                int rightChild = leftChild + 1;
-                int smallest   = heapIndex;
-
-                if (leftChild < _heapCount &&
-                    _heapKeys[_heap[leftChild]] < _heapKeys[_heap[smallest]]) {
-                    smallest = leftChild;
-                }
-
-                if (rightChild < _heapCount &&
-                    _heapKeys[_heap[rightChild]] < _heapKeys[_heap[smallest]]) {
-                    smallest = rightChild;
-                }
-
-                if (smallest == heapIndex) break;
-
-                HeapSwap(heapIndex, smallest);
-                heapIndex = smallest;
-            }
-        }
-
-        void HeapUpdate(int cell, float key) {
-            _heapKeys[cell] = key;
-            int pos = _heapPos[cell];
-
-            if (pos < 0) {
-                pos            = _heapCount++;
-                _heap[pos]     = cell;
-                _heapPos[cell] = pos;
-                SiftUp(pos);
-            } else {
-                SiftUp(pos);
-                SiftDown(_heapPos[cell]);
-            }
-        }
-
-        void HeapRemove(int cell) {
-            int pos = _heapPos[cell];
-            if (pos < 0) return;
-
-            int lastHeapIndex = --_heapCount;
-            _heapPos[cell] = -1;
-            if (pos == lastHeapIndex) return;
-
-            int movedCell = _heap[lastHeapIndex];
-            _heap[pos]          = movedCell;
-            _heapPos[movedCell] = pos;
-
-            SiftUp(pos);
-            SiftDown(_heapPos[movedCell]);
-        }
+        #endregion
     }
 }
