@@ -50,6 +50,24 @@ namespace WFC.Core {
         public int* changedCells;  // [cellCount]
         public byte* queuedFlags;  // [2 * cellCount] adjacency and window flags
         public byte* changedFlags; // [cellCount]
+
+        // Optional semantic routes; a zero route count selects flat WFC.
+        public int semanticRouteCount, semanticRouteWords;
+        public int* semanticChildOffsets;
+        public float* semanticChildWeights;
+        public int* semanticLeafTerrainIds;
+        public int* initialSemanticNodes;
+        public int* semanticNodes;
+        public int* semanticRouteOffsets;
+        public int* semanticRouteNodes;
+        public int* semanticRouteEdges;
+        public int* semanticRouteTerrains;
+        public ulong* semanticRouteSupport;
+        public ulong* semanticRoutes;
+        public ulong* baseSemanticRoutes;
+        public ulong* semanticRouteScratch;
+        public byte* semanticChoiceScratch;
+        public int* resultSemanticRoutes;
     }
 
     /// <summary>
@@ -65,7 +83,7 @@ namespace WFC.Core {
         }
     }
 
-    unsafe struct WFCState {
+    unsafe partial struct WFCState {
         #region Configuration
         readonly int _w;
         readonly int _h;
@@ -104,6 +122,8 @@ namespace WFC.Core {
         readonly byte* _changedFlags; // Prevents duplicate entries in changedCells.
         int _changedCount;
         #endregion
+
+        readonly SemanticBuffers _semantic;
 
         PropagationQueue _queue;
         EntropyHeap _heap;
@@ -148,6 +168,8 @@ namespace WFC.Core {
             _changedCount        = 0;
             _failedCell          = -1;
 
+            _semantic = new SemanticBuffers(ref a);
+
             _queue = new PropagationQueue(a.queue, a.queuedFlags, _cellCount);
             _heap  = new EntropyHeap(a.heapKeys, a.heap, a.heapPos);
         }
@@ -163,7 +185,7 @@ namespace WFC.Core {
             // check for cells with no initially valid tiles.
             Domain.CopyRange(_domains, _initialDomains, _cellCount, _wordsPerDomain);
             for (int i = 0; i < _cellCount; i++) {
-                if (!D(i).IsEmpty) continue;
+                if (!D(i).IsEmpty && (!HasSemantics || InitializeSemanticCell(i))) continue;
                 Finish((int)WFCStatus.Unsatisfiable, i, 0);
                 return;
             }
@@ -183,29 +205,29 @@ namespace WFC.Core {
             #endregion
 
             Domain.CopyRange(_baseDomains, _domains, _cellCount, _wordsPerDomain);
+            if (HasSemantics)
+                Domain.CopyRange(_semantic.BaseRoutes, _semantic.Routes, _cellCount, _semantic.Words);
             for (int attempt = 1; attempt <= _maxAttempts; attempt++) {
                 Domain.CopyRange(_domains, _baseDomains, _cellCount, _wordsPerDomain);
+                if (HasSemantics) RestoreSemanticAttempt();
                 ResetSearchState();
                 // init entropy heat w/ all cells that still have multiple candidates
                 for (int i = 0; i < _cellCount; i++) {
-                    if (!D(i).IsSingle) _heap.Update(i, Entropy(i));
+                    if (!IsCellResolved(i)) _heap.Update(i, Entropy(i));
                 }
 
                 bool ok = true;
                 // collapse lowest-entropy cell
-                while (_heap.Count > 0) {
+                while (_heap.Count > 0)
+                {
                     int cell = _heap.Min;
-                    int pick = PickTile(cell);
 
-                    // collapse cell & propagate constraints
-                    D(cell).SetOnly(pick);
-                    OnDomainChanged(cell);
-                    if (!Propagate()) {
+                    if (!CollapseCell(cell) || !Propagate())
+                    {
                         ok = false;
                         break;
                     }
 
-                    // commit pending domain changes to entropy heap
                     FlushChanged();
                 }
 
@@ -213,7 +235,10 @@ namespace WFC.Core {
                 if (!ok) continue;
 
                 // extract resolved tile index & report success
-                for (int i = 0; i < _cellCount; i++) _result[i] = D(i).FirstSet();
+                for (int i = 0; i < _cellCount; i++) {
+                    _result[i] = D(i).FirstSet();
+                    if (HasSemantics) _semantic.Results[i] = SemanticRoutes(i).FirstSet();
+                }
                 Finish((int)WFCStatus.Success, -1, attempt);
                 return;
             }
@@ -221,7 +246,18 @@ namespace WFC.Core {
             Finish((int)WFCStatus.Failed, _failedCell, _maxAttempts);
         }
 
+        bool CollapseCell(int cell) {
+            if (HasSemantics) {
+                if (!RefineSemanticCell(cell)) return false;
+            } else {
+                D(cell).SetOnly(PickTile(cell));
+            }
+            OnDomainChanged(cell);
+            return true;
+        }
+
         void Finish(int status, int cell, int attempts) {
+            if (HasSemantics && status != (int)WFCStatus.Success) ResetSemanticNodes();
             _resultInfo[0] = status;
             _resultInfo[1] = cell;
             _resultInfo[2] = attempts;
@@ -271,7 +307,7 @@ namespace WFC.Core {
 
                 if (isWindowCheck) {
                     if (!CheckWindows(cell)) return false;
-                } else if (!PropagateAdjacency(cell)) {
+                } else if (HasSemantics ? !PropagateSemanticAdjacency(cell) : !PropagateAdjacency(cell)) {
                     return false;
                 }
             }
@@ -500,7 +536,7 @@ namespace WFC.Core {
                 int cell = _changedCells[i];
                 _changedFlags[cell] = 0;
 
-                if (D(cell).IsSingle) _heap.Remove(cell);
+                if (IsCellResolved(cell)) _heap.Remove(cell);
                 else _heap.Update(cell, Entropy(cell));
             }
 

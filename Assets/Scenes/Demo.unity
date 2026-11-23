@@ -266,6 +266,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1733027307}
   - component: {fileID: 1733027306}
+  - component: {fileID: 1733027308}
   m_Layer: 0
   m_Name: Test
   m_TagString: Untagged
@@ -285,8 +286,36 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 67f1e960030edf1aebd39403af1a45f3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Terrain::WFC.Terrain.WFCTerrainGenerator
-  terrainSet: {fileID: 11400000, guid: 087f3db9ae2b4ba68a445c183fb6b0d9, type: 2}
+  terrainSet: {fileID: 11400000, guid: c0a3e7a91cd34f5eab73138c6d8b01e7, type: 2}
   cellSize: 1
+  semanticPlacements:
+  - cell: {x: 18, y: 16}
+    nodeId: 2
+  semanticRegions:
+  - origin: {x: 0, y: 0}
+    size: {x: 17, y: 8}
+    nodeId: 1
+  - origin: {x: 0, y: 8}
+    size: {x: 19, y: 8}
+    nodeId: 1
+  - origin: {x: 0, y: 16}
+    size: {x: 16, y: 8}
+    nodeId: 1
+  - origin: {x: 0, y: 24}
+    size: {x: 14, y: 8}
+    nodeId: 1
+  - origin: {x: 22, y: 0}
+    size: {x: 10, y: 8}
+    nodeId: 5
+  - origin: {x: 24, y: 8}
+    size: {x: 8, y: 8}
+    nodeId: 5
+  - origin: {x: 21, y: 16}
+    size: {x: 11, y: 8}
+    nodeId: 5
+  - origin: {x: 19, y: 24}
+    size: {x: 13, y: 8}
+    nodeId: 5
   seed: 7
   width: 32
   height: 32
@@ -316,6 +345,18 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1733027308
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1733027305}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 01afe75541451824da2a6e55d8bf31c9, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Terrain::SemanticGraphExample
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

@@ -10,6 +10,7 @@ namespace WFC.Terrain {
         public int count;
         public TerrainDef[] defs;
         public WFCRules rules;
+        public CompiledSemanticGraph semanticGraph;
 
         // Logic inputs for BiomeWeights.
         public float[] weight, biomeCenter;
@@ -28,6 +29,8 @@ namespace WFC.Terrain {
     [CreateAssetMenu(menuName = "Terrain/Terrain Set", fileName = "TerrainSet")]
     public class TerrainSet : ScriptableObject {
         [SerializeField] public List<TerrainDef> terrains = new();
+        [Tooltip("Optional semantic hierarchy for generation. Leaves reference terrains in this set.")]
+        public SemanticGraphAsset semanticGraph;
 
         [Tooltip("Off: diagonal neighbours are unconstrained. On: every terrain may only touch itself or its diagonalNeighbor entries diagonally. Never derived from canNeighbor.")]
         public bool useDiagonalRules;
@@ -137,6 +140,7 @@ namespace WFC.Terrain {
             }
 
             c.rules = b.Build();
+            if (semanticGraph) c.semanticGraph = semanticGraph.Compile(c.defs);
             string problem = c.rules.Validate();
             if (problem != null) Warn(problem);
             return c;

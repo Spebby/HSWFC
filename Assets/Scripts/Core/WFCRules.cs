@@ -23,17 +23,21 @@ namespace WFC.Core {
         public readonly int count;
         public readonly float[] weight;
         public readonly ulong[] support;
+        // Directional Restrict rules, independent of the default terrain whitelist.
+        // A semantic whitelist may replace that default but must honor these masks.
+        internal readonly ulong[] directionalSupport;
         public readonly ulong[] mustExist;
         public readonly int windowCount;
         public readonly ulong[] windowTargets;
         public readonly int[] windowMarker;
         public readonly ulong[] windowFeasible;
 
-        internal WFCRules(int count, int wordsPerDomain, float[] weight, ulong[] support, ulong[] mustExist, ulong[] windowTargets, int[] windowMarker, ulong[] windowFeasible) {
+        internal WFCRules(int count, int wordsPerDomain, float[] weight, ulong[] support, ulong[] directionalSupport, ulong[] mustExist, ulong[] windowTargets, int[] windowMarker, ulong[] windowFeasible) {
             this.count          = count;
             this.wordsPerDomain = wordsPerDomain;
             this.weight         = weight;
             this.support        = support;
+            this.directionalSupport = directionalSupport;
             this.mustExist      = mustExist;
             windowCount         = windowMarker.Length;
             this.windowTargets  = windowTargets;
@@ -290,9 +294,14 @@ namespace WFC.Core {
 
             // Apply explicit directional rules and their symmetric counterparts.
             ulong[] must = new ulong[checked(Dirs.Count * WordsPerDomain)];
+            ulong[] directionalSupport = _rules.Count == 0 ? null : new ulong[support.Length];
+            if (directionalSupport != null) {
+                for (int offset = 0; offset < support.Length; offset += WordsPerDomain)
+                    Array.Copy(full, 0, directionalSupport, offset, WordsPerDomain);
+            }
             foreach (DirectionalRule rule in _rules) {
                 int offset = ((int)rule.dir * TileCount + rule.tile) * WordsPerDomain;
-                for (int w = 0; w < WordsPerDomain; w++) support[offset + w] &= rule.allowed[w];
+                for (int w = 0; w < WordsPerDomain; w++) directionalSupport[offset + w] &= rule.allowed[w];
 
                 int   opposite = (int)Dirs.Opposite(rule.dir);
                 ulong tileBit  = 1UL << (rule.tile & 63);
@@ -301,11 +310,14 @@ namespace WFC.Core {
                 for (int x = 0; x < TileCount; x++) {
                     if (Has(rule.allowed, x)) continue;
                     int reverseOffset = (opposite * TileCount + x) * WordsPerDomain;
-                    support[reverseOffset + tileWord] &= ~tileBit;
+                    directionalSupport[reverseOffset + tileWord] &= ~tileBit;
                 }
 
                 // Record tiles that require an in-grid neighbour in this direction.
                 if (rule.mustExist) must[(int)rule.dir * WordsPerDomain + tileWord] |= tileBit;
+            }
+            if (directionalSupport != null) {
+                for (int i = 0; i < support.Length; i++) support[i] &= directionalSupport[i];
             }
 
             // Flatten window constraints into contiguous arrays for the unmanaged kernel.
@@ -326,6 +338,7 @@ namespace WFC.Core {
                 WordsPerDomain,
                 (float[])_weight.Clone(),
                 support,
+                directionalSupport,
                 must,
                 targets,
                 markers,

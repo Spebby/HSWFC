@@ -7,12 +7,9 @@ neighbours, it can check a whole 3x3 neighbourhoods (Window Constraints).
 
 ## Data Model
 
-**Domanins** Every cell keeps a list of the tiles it could still become,
-stored as a `ulong`. If bit _t_ is set, tile _t_ is still possible.
-One 64-bit number per cell means a cell's whole state fits in a register and
-checks/removals are very cheap. The cost is that there is a hard
-limit of 64 tiles. If we need more tiles, then we'd need to allocate more ulongs
-per cell, or split up solving into chunks.
+**Domains** Each cell stores its remaining tile IDs as a bitset. The buffers
+use one `ulong` per 64 tile IDs, with tile _t_ stored in word `t / 64` at bit
+`t % 64`. Some older convenience helpers work with a single word only.
 
 **Directions** There are eight: N, NE, E, SE, S, SW, W, NW, numbered 0 to 7
 to match Wangtiles configuration. +y acts as north. Direction _d_ owns bit
@@ -43,9 +40,8 @@ rules. The builder compiles Terrain Definitions into rules based on...
   would be off the map. A door that needs road to the south can't be on the south
   edge. The solver applies this to the starting domains. (Consider cutting)
 
-Everything is compiled into one table, because this is how basic WFC works, and
-we want fast lookup. Pairwise and Window Constrains all flatten into the same bitsets.
-Any new kind of rule is a new step in the compiler, not a change to the solver.
+Pairwise adjacency is compiled into the support table for fast lookup. Window
+constraints use separate feasibility tables and inspect a whole neighborhood.
 
 ## Window Constraints
 
@@ -144,3 +140,42 @@ There are a few areas this could be improved.
   in blocks.
 - Starting state: Reserved areas, pinned tiles
 - Weights: Any per-cell bias, such as a designer brush.
+## Semantic DAG solving
+
+`SemanticGraph` contains named nodes, weighted child edges, directed adjacency
+declarations, and a terrain ID on each leaf. A child can have multiple parents.
+The compiler validates references, weights, cycles, and reachability from the
+root. It builds descendant masks and assigns an ID to each distinct root-to-leaf
+route. For example, Root → Land → Dirt and Root → Shore → Dirt are distinct
+routes even though they have the same concrete terrain ID.
+
+`WFCSolver` takes an optional compiled graph. A semantic cell holds its current
+node and a bitset of viable routes. An observation chooses a direct child with
+at least one viable route and removes the routes through its siblings. Edge
+weights apply once per eligible child. When all eligible edges have zero weight,
+the solver chooses uniformly among them as a fallback. Cell scheduling still
+uses the solver's concrete terrain entropy.
+
+For a direction with semantic rules, two routes are compatible if an authored
+allowance matches a node on each route. This lets descendants inherit the
+allowance along those routes. Opposite directions are inferred automatically.
+Directions with no semantic rules use the existing concrete neighbor table.
+Concrete directional restrictions, required neighbors, and enabled terrain
+windows still apply. The propagation queue removes any route that has no
+compatible surviving route in a neighbor. This can rule out a child while its
+parent remains viable through another child. Windows read the projected
+concrete terrain choices and any removals flow back into the route domains.
+
+`Solve(initialSemanticNodes: ...)` accepts one node ID per cell, or `-1` to
+start at the root. When a node has multiple parents, all route prefixes reaching
+that starting node remain eligible until constraints or search resolve them.
+Search retries restore both concrete and semantic domains and restart at the
+specified nodes. After success, `GetSemanticPath(cell)` returns an ordered copy
+from the starting node to the chosen leaf. Flat solves and failed semantic
+solves have empty paths.
+
+Explicit route expansion keeps propagation and path reconstruction simple,
+with a cost that depends on the number of root-to-leaf routes. Compilation
+rejects graphs above 16,384 routes or 1,048,576 total node entries across routes.
+The solver also limits its route compatibility table to 64 MiB. Highly connected
+DAGs can reach these limits with comparatively few nodes.

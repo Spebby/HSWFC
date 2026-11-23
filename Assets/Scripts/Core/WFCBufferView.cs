@@ -58,16 +58,14 @@ namespace WFC.Core {
 
         public bool IsSingle {
             get {
-                ulong any      = 0;
-                ulong multiple = 0;
-
+                bool found = false;
                 for (int i = 0; i < _k; i++) {
                     ulong word = _p[i];
-                    multiple |= word & (word - 1);
-                    any      |= word;
+                    if (word == 0) continue;
+                    if (found || (word & (word - 1)) != 0) return false;
+                    found = true;
                 }
-
-                return any != 0 && multiple == 0 && math.countbits(any) == 1;
+                return found;
             }
         }
 

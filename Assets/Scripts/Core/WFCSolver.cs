@@ -24,6 +24,7 @@ namespace WFC.Core {
     /// </summary>
     public sealed unsafe class WFCSolver : IDisposable {
         readonly WFCRules _rules;
+        readonly CompiledSemanticGraph _semanticGraph;
         readonly int _width;
         readonly int _height;
         readonly IWFCExecutor _executor;
@@ -31,6 +32,8 @@ namespace WFC.Core {
         readonly int _tileCount, _cellCount;
         readonly List<GCHandle> _pinnedHandles = new();
         readonly ulong[] _initialDomains;
+        readonly int[] _initialSemanticNodes;
+        readonly int[] _resultRoutes;
         readonly int[] _resultInfo = new int[3];
         readonly bool _hasPerCellWeights;
         WFCKernelArgs _args;
@@ -40,6 +43,8 @@ namespace WFC.Core {
         /// <summary>Tile index per cell, index = y * Width + x. Overwritten by every successful Solve.</summary>
         public int[] Layout { get; }
 
+        /// <summary>Final semantic node per cell after success, or the starting node before or after a failed solve.</summary>
+        public int[] SemanticNodes { get; }
         /// <summary>Number of search attempts used by the last Solve.</summary>
         public int LastAttempts { get; private set; }
 
@@ -49,18 +54,59 @@ namespace WFC.Core {
         /// <summary>
         /// Creates solver for the rules and grid dimensions. Allocates and pins the kernel's working buffers.
         /// </summary>
-        public WFCSolver(WFCRules rules, int width, int height, bool hasPerCellWeights = false, IWFCExecutor executor = null) {
+        public WFCSolver(WFCRules rules, int width, int height, bool hasPerCellWeights = false, IWFCExecutor executor = null, CompiledSemanticGraph semanticGraph = null) {
             if (width < 1 || height < 1) throw new ArgumentException("grid must be at least 1x1");
             _rules    = rules ?? throw new ArgumentNullException(nameof(rules));
             _width    = width;
             _height   = height;
             _tileCount = rules.count;
-            _cellCount    = width * height;
+            _cellCount    = checked(width * height);
             _executor = executor ?? new ManagedIWFCExecutor();
 
             // NOTE: there's a fair few pins here, if there's a throw then it'll leak, so may be good to be more defensive
             _wordsPerDomain  = (_tileCount + 63) / 64;
             int domainWordCount = checked(_cellCount * _wordsPerDomain);
+
+            _semanticGraph = semanticGraph;
+
+            if (_semanticGraph != null)
+            {
+                if (_semanticGraph.TerrainCount != _tileCount ||
+                    _semanticGraph.WordsPerNode != _wordsPerDomain)
+                {
+                    throw new ArgumentException(
+                        "The semantic graph must match the solver's terrain count.");
+                }
+
+                if (_semanticGraph.RootId < 0 ||
+                    _semanticGraph.RootId >= _semanticGraph.NodeCount)
+                {
+                    throw new ArgumentException(
+                        "The semantic graph has an invalid root.");
+                }
+            }
+
+            SemanticNodes = new int[_cellCount];
+
+            int startingNode = _semanticGraph == null
+                ? -1
+                : _semanticGraph.RootId;
+
+            Array.Fill(SemanticNodes, startingNode);
+
+            int routeWords = 0;
+            int routeDomainWords = 0;
+            ulong[] routeSupport = null;
+            if (_semanticGraph != null) {
+                int routeCount = _semanticGraph.RouteTerrainIds.Length;
+                routeWords = (routeCount - 1) / 64 + 1;
+                routeDomainWords = checked(_cellCount * routeWords);
+                routeSupport = SemanticRouteRules.Build(_semanticGraph, rules, routeWords);
+                _initialSemanticNodes = new int[_cellCount];
+                Array.Fill(_initialSemanticNodes, startingNode);
+                _resultRoutes = new int[_cellCount];
+                Array.Fill(_resultRoutes, -1);
+            }
 
             Layout          = new int[_cellCount];
             _initialDomains = new ulong[domainWordCount];
@@ -97,6 +143,27 @@ namespace WFC.Core {
                 cellWeights         = hasPerCellWeights ? Pin(new float[weightCount]) : null,
                 weightLogWeights    = Pin(new float[weightCount])
             };
+
+            if (_semanticGraph != null)
+            {
+                _args.semanticChildOffsets = Pin(_semanticGraph.ChildOffsets);
+                _args.semanticChildWeights = Pin(_semanticGraph.ChildWeights);
+                _args.semanticLeafTerrainIds = Pin(_semanticGraph.LeafTerrainIds);
+                _args.initialSemanticNodes = Pin(_initialSemanticNodes);
+                _args.semanticNodes = Pin(SemanticNodes);
+                _args.semanticRouteCount = _semanticGraph.RouteTerrainIds.Length;
+                _args.semanticRouteWords = routeWords;
+                _args.semanticRouteOffsets = Pin(_semanticGraph.RouteNodeOffsets);
+                _args.semanticRouteNodes = Pin(_semanticGraph.RouteNodes);
+                _args.semanticRouteEdges = Pin(_semanticGraph.RouteEdgeIndices);
+                _args.semanticRouteTerrains = Pin(_semanticGraph.RouteTerrainIds);
+                _args.semanticRouteSupport = Pin(routeSupport);
+                _args.semanticRoutes = Pin(new ulong[routeDomainWords]);
+                _args.baseSemanticRoutes = Pin(new ulong[routeDomainWords]);
+                _args.semanticRouteScratch = Pin(new ulong[routeWords]);
+                _args.semanticChoiceScratch = Pin(new byte[_semanticGraph.ChildWeights.Length]);
+                _args.resultSemanticRoutes = Pin(_resultRoutes);
+            }
         }
 
         /// <summary> Pins array and returns a pointer to its memory. Retained until solver is disposed. </summary>
@@ -112,8 +179,10 @@ namespace WFC.Core {
         /// bias tile selection independently per cell. Boundary constraints remove
         /// tiles whose MustExist neighbours would fall outside the grid.
         /// Window constraints can be disabled with useWindows.
+        /// With a graph, initialSemanticNodes optionally specifies one starting node
+        /// per cell. Use -1 for the default root. Concrete restrictions still apply.
         /// </summary>
-        public WFCStatus Solve(ulong seed, ReadOnlySpan<ulong> initialDomains = default, ReadOnlySpan<float> cellWeights = default, int maxAttempts = 100, bool useWindows = true) {
+        public WFCStatus Solve(ulong seed, ReadOnlySpan<ulong> initialDomains = default, ReadOnlySpan<float> cellWeights = default, int maxAttempts = 100, bool useWindows = true, ReadOnlySpan<int> initialSemanticNodes = default) {
             const string INIT_DOMAIN_LENGTH_MISMATCH = "initialDomains needs one entry per cell per domain word";
             const string CELL_WEIGHT_COUNT_MISMATCH  = "cellWeights needs Count entries per cell";
             const string SOLVER_CELL_WEIGHT_ERROR    = "This solver was not configured for per-cell weights";
@@ -125,6 +194,15 @@ namespace WFC.Core {
 
             if (!initialDomains.IsEmpty && initialDomains.Length != _initialDomains.Length) {
                 throw new ArgumentException(INIT_DOMAIN_LENGTH_MISMATCH, nameof(initialDomains));
+            }
+            if (!initialSemanticNodes.IsEmpty) {
+                if (_semanticGraph == null || initialSemanticNodes.Length != _cellCount)
+                    throw new ArgumentException("Provide one starting node per cell and a semantic graph.", nameof(initialSemanticNodes));
+
+                foreach (int node in initialSemanticNodes) {
+                    if (node < -1 || node >= _semanticGraph.NodeCount)
+                        throw new ArgumentOutOfRangeException(nameof(initialSemanticNodes), "Starting node IDs must exist in the semantic graph.");
+                }
             }
 
             // config per cell weights
@@ -150,6 +228,14 @@ namespace WFC.Core {
 
             ApplyBoundary();
 
+            if (_semanticGraph != null) {
+                for (int cell = 0; cell < _cellCount; cell++) {
+                    int node = initialSemanticNodes.IsEmpty ? -1 : initialSemanticNodes[cell];
+                    _initialSemanticNodes[cell] = node < 0 ? _semanticGraph.RootId : node;
+                }
+                Array.Fill(_resultRoutes, -1);
+            }
+
             // config kernel args
             _args.seed        = seed;
             _args.maxAttempts = maxAttempts;
@@ -164,6 +250,24 @@ namespace WFC.Core {
             LastFailCell = _resultInfo[1];
             LastAttempts = _resultInfo[2];
             return (WFCStatus)_resultInfo[0];
+        }
+
+        /// <summary>
+        /// Copies the resolved path from the cell's starting node to its leaf.
+        /// Returns an empty array until a semantic solve has succeeded.
+        /// </summary>
+        public int[] GetSemanticPath(int cell) {
+            if (_isDisposed) throw new ObjectDisposedException(nameof(WFCSolver));
+            if (cell < 0 || cell >= _cellCount) throw new ArgumentOutOfRangeException(nameof(cell));
+            if (_resultRoutes == null || _resultRoutes[cell] < 0) return Array.Empty<int>();
+
+            int route = _resultRoutes[cell];
+            int start = _semanticGraph.RouteNodeOffsets[route];
+            int end = _semanticGraph.RouteNodeOffsets[route + 1];
+            while (_semanticGraph.RouteNodes[start] != _initialSemanticNodes[cell]) start++;
+            var path = new int[end - start];
+            Array.Copy(_semanticGraph.RouteNodes, start, path, 0, path.Length);
+            return path;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
