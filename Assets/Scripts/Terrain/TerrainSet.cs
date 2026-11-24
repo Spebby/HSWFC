@@ -29,7 +29,7 @@ namespace WFC.Terrain {
     [CreateAssetMenu(menuName = "Terrain/Terrain Set", fileName = "TerrainSet")]
     public class TerrainSet : ScriptableObject {
         [SerializeField] public List<TerrainDef> terrains = new();
-        [Tooltip("Optional semantic hierarchy for generation. Leaves reference terrains in this set.")]
+        [Tooltip("Hierarchy over this set's terrains; its leaves reference them. Left empty, every terrain is a direct child of the root.")]
         public SemanticGraphAsset semanticGraph;
 
         [Tooltip("Off: diagonal neighbours are unconstrained. On: every terrain may only touch itself or its diagonalNeighbor entries diagonally. Never derived from canNeighbor.")]
@@ -139,8 +139,8 @@ namespace WFC.Terrain {
                 Warn($"{d.name}: {forbidden} of 255 neighbour layouts need a mandatory overlay sprite that does not exist; the generator will avoid them.");
             }
 
-            c.rules = b.Build();
-            if (semanticGraph) c.semanticGraph = semanticGraph.Compile(c.defs);
+            c.rules         = b.Build();
+            c.semanticGraph = semanticGraph ? semanticGraph.Compile(c.defs) : SemanticGraphCompiler.Flat(n);
             string problem = c.rules.Validate();
             if (problem != null) Warn(problem);
             return c;

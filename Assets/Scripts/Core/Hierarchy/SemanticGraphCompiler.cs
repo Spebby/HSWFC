@@ -10,28 +10,38 @@ namespace WFC.Core
         public const int MaxRouteCount = 16_384;
         public const int MaxRouteNodeCount = 1_048_576;
 
-        public static ulong[] BuildLeafMasks(SemanticGraph graph, int terrainCount)
+        /// <summary>
+        /// The hierarchy of an ungrouped terrain set: a root with one leaf per terrain, in terrain order.
+        /// Every route is a terrain, so solving it is plain WFC.
+        /// </summary>
+        public static CompiledSemanticGraph Flat(int terrainCount)
         {
-            int[] order = Validate(graph, terrainCount, out _);
-            return BuildLeafMasks(graph, (terrainCount - 1) / 64 + 1, order);
+            if (terrainCount < 1) throw new ArgumentOutOfRangeException(nameof(terrainCount));
+
+            var graph = new SemanticGraph(0);
+            graph.Nodes.Add(new SemanticNode("Root", 0));
+            for (int terrain = 0; terrain < terrainCount; terrain++)
+            {
+                graph.Nodes.Add(new SemanticNode($"Terrain {terrain}", terrain + 1, terrain));
+                graph.Nodes[0].Children.Add(new SemanticEdge(terrain + 1, 1f));
+            }
+
+            return Compile(graph, terrainCount);
         }
 
         public static CompiledSemanticGraph Compile(SemanticGraph graph, int terrainCount)
         {
             int[] order = Validate(graph, terrainCount, out int edgeCount);
             int nodeCount = graph.Nodes.Count;
-            int wordsPerNode = (terrainCount - 1) / 64 + 1;
             var compiled = new CompiledSemanticGraph
             {
                 RootId = graph.RootId,
                 NodeCount = nodeCount,
                 TerrainCount = terrainCount,
-                WordsPerNode = wordsPerNode,
                 ChildOffsets = new int[nodeCount + 1],
                 ChildIds = new int[edgeCount],
                 ChildWeights = new float[edgeCount],
                 LeafTerrainIds = new int[nodeCount],
-                DescendantMasks = BuildLeafMasks(graph, wordsPerNode, order),
                 Adjacencies = CompileAdjacencies(graph)
             };
 
@@ -98,36 +108,6 @@ namespace WFC.Core
             }
 
             return order;
-        }
-
-        private static ulong[] BuildLeafMasks(SemanticGraph graph, int wordsPerNode, int[] order)
-        {
-            var masks = new ulong[checked(graph.Nodes.Count * wordsPerNode)];
-
-            // Children are visited before their parents, so shared descendants are
-            // evaluated once and each parent can union its direct children's masks.
-            for (int i = order.Length - 1; i >= 0; i--)
-            {
-                int nodeId = order[i];
-                SemanticNode node = graph.Nodes[nodeId];
-                int offset = nodeId * wordsPerNode;
-
-                if (node.Children.Count == 0)
-                {
-                    int terrainId = node.TerrainId;
-                    masks[offset + terrainId / 64] = 1UL << (terrainId % 64);
-                    continue;
-                }
-
-                foreach (SemanticEdge edge in node.Children)
-                {
-                    int childOffset = edge.ChildId * wordsPerNode;
-                    for (int word = 0; word < wordsPerNode; word++)
-                        masks[offset + word] |= masks[childOffset + word];
-                }
-            }
-
-            return masks;
         }
 
         private static SemanticAdjacency[] CompileAdjacencies(SemanticGraph graph)

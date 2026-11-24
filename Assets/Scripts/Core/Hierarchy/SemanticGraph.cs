@@ -6,8 +6,8 @@ namespace WFC.Core
     public class SemanticGraph
     {
         public int RootId;
-        public List<SemanticNode> Nodes = new List<SemanticNode>();
-        public List<SemanticAdjacency> Adjacencies = new List<SemanticAdjacency>();
+        public List<SemanticNode> Nodes = new();
+        public List<SemanticAdjacency> Adjacencies = new();
 
         public SemanticGraph(int rootId)
         {
@@ -15,6 +15,13 @@ namespace WFC.Core
         }
 
         public bool IsLeaf(int nodeId) => Nodes[nodeId].Children.Count == 0;
+
+        /// <summary>Permits routes through <paramref name="neighborId"/> beside routes through <paramref name="sourceId"/> in all eight directions.</summary>
+        public void AllowNeighbors(int sourceId, int neighborId)
+        {
+            for (int d = 0; d < Dirs.Count; d++)
+                Adjacencies.Add(new SemanticAdjacency(sourceId, (Direction)d, neighborId));
+        }
 
         public HashSet<int> GetLeafIds(int nodeId)
         {
@@ -49,7 +56,7 @@ namespace WFC.Core
         public bool AllNodesReachableFromRoot() =>
             GetReachableIds(RootId).Count == Nodes.Count;
 
-        private HashSet<int> GetReachableIds(int startNode)
+        HashSet<int> GetReachableIds(int startNode)
         {
             var reachable = new HashSet<int> { startNode };
             var pending = new Stack<int>();

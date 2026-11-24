@@ -89,10 +89,9 @@ namespace WFC.Terrain {
         void Update() {
             if (!Application.isPlaying) return;
             if (!_dirty) {
-                if (_semanticViewDirty && Layout != null) {
-                    _semanticViewDirty = false;
-                    Render();
-                }
+                if (!_semanticViewDirty || Layout == null) return;
+                _semanticViewDirty = false;
+                Render();
                 return;
             }
 
@@ -181,14 +180,13 @@ namespace WFC.Terrain {
             _visibleSemanticNodes.Clear();
             if (view != View.SemanticPaths || ct.semanticGraph == null) return;
 
-            if (_semanticPaths == null) {
-                _semanticPaths = new int[Layout.Length][];
-                _lastSemanticStep = 0;
-                for (int cell = 0; cell < _semanticPaths.Length; cell++) {
-                    int[] path = _solver.GetSemanticPath(cell);
-                    _semanticPaths[cell] = path;
-                    _lastSemanticStep = Math.Max(_lastSemanticStep, path.Length - 1);
-                }
+            if (_semanticPaths != null) return;
+            _semanticPaths    = new int[Layout.Length][];
+            _lastSemanticStep = 0;
+            for (int cell = 0; cell < _semanticPaths.Length; cell++) {
+                int[] path = _solver.GetSemanticPath(cell);
+                _semanticPaths[cell] = path;
+                _lastSemanticStep    = Math.Max(_lastSemanticStep, path.Length - 1);
             }
         }
 

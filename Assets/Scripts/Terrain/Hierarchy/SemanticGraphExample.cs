@@ -1,11 +1,11 @@
 using UnityEngine;
 using WFC.Core;
 
-public class SemanticGraphExample : MonoBehaviour
-{
-    private void Start()
-    {
-        SemanticGraph graph = new SemanticGraph(0);
+
+public class SemanticGraphExample : MonoBehaviour {
+    void Start() {
+        // Terrains: 0 Grass, 1 Dirt, 2 Water.
+        SemanticGraph graph = new(0);
 
         // Semantic groups.
         graph.Nodes.Add(new SemanticNode("Root", 0));
@@ -25,60 +25,36 @@ public class SemanticGraphExample : MonoBehaviour
         graph.Nodes[1].Children.Add(new SemanticEdge(3, 1.0f));
         graph.Nodes[1].Children.Add(new SemanticEdge(4, 1.0f));
 
-        // Shore can become Dirt or Water.
+        // Shore can become Dirt or Water. Dirt is shared, so it appears on two routes.
         graph.Nodes[2].Children.Add(new SemanticEdge(4, 1.0f));
         graph.Nodes[2].Children.Add(new SemanticEdge(5, 1.0f));
 
-        // Compile also performs the graph validation checks.
-        CompiledSemanticGraph compiled =
-            SemanticGraphCompiler.Compile(graph, 3);
+        // Adjacency is granted per direction, and the opposite direction is inferred. Land cells may sit beside
+        // Land or Dirt, and Dirt (on either route) may sit beside Land, Shore and Water.
+        graph.AllowNeighbors(1, 1);
+        graph.AllowNeighbors(1, 4);
+        graph.AllowNeighbors(2, 2);
+        graph.AllowNeighbors(4, 2);
 
-        Debug.Log(
-            "Child offsets: " +
-            string.Join(", ", compiled.ChildOffsets));
+        // Compile also performs the graph validation checks and enumerates the routes.
+        CompiledSemanticGraph compiled = SemanticGraphCompiler.Compile(graph, 3);
+        Debug.Log($"Routes: {compiled.RouteCount}");
 
-        Debug.Log(
-            "Child IDs: " +
-            string.Join(", ", compiled.ChildIds));
-
-        Debug.Log(
-            "Child weights: " +
-            string.Join(", ", compiled.ChildWeights));
-
-        Debug.Log(
-            "Leaf terrain IDs: " +
-            string.Join(", ", compiled.LeafTerrainIds));
-
-        Debug.Log(
-            "Descendant masks: " +
-            string.Join(", ", compiled.DescendantMasks));
-
-        // Three concrete terrain types, matching the compiled graph.
+        // Terrain adjacency applies only to directions the graph does not declare.
         WFCRules rules = new WFCRulesBuilder(3).Build();
 
         // Construct a grid with two cells and give it the graph.
-        using (WFCSolver solver = new WFCSolver(
-            rules, 2, 1, semanticGraph: compiled))
-        {
-            WFCStatus status = solver.Solve(7UL);
+        using WFCSolver solver = new(rules, 2, 1, semanticGraph: compiled);
+        WFCStatus       status = solver.Solve(7UL);
 
-            Debug.Log("Solve status: " + status);
+        Debug.Log($"Solve status: {status}");
 
-            if (status == WFCStatus.Success)
-            {
-                Debug.Log(
-                    "Final semantic leaves: " +
-                    string.Join(", ", solver.SemanticNodes));
+        if (status != WFCStatus.Success) return;
+        Debug.Log($"Final semantic leaves: {string.Join(", ", solver.SemanticNodes)}");
+        Debug.Log($"Final terrain IDs: {string.Join(", ", solver.Layout)}");
 
-                Debug.Log(
-                    "Final terrain IDs: " +
-                    string.Join(", ", solver.Layout));
-
-                for (int cell = 0; cell < solver.Layout.Length; cell++)
-                {
-                    Debug.Log($"Cell {cell} path: {string.Join(" -> ", solver.GetSemanticPath(cell))}");
-                }
-            }
+        for (int cell = 0; cell < solver.Layout.Length; cell++) {
+            Debug.Log($"Cell {cell} path: {string.Join(" -> ", solver.GetSemanticPath(cell))}");
         }
     }
 }
