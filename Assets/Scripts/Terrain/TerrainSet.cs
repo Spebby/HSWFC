@@ -83,7 +83,7 @@ namespace WFC.Terrain {
                 foreach (DirectionalRule r in d.rules) {
                     if (r == null) continue;
                     ulong[] mask = MaskOf(r.allowed, d.name);
-                    if (!Any(mask)) {
+                    if (!HasAnyTerrain(mask)) {
                         Warn($"{d.name} has a {r.direction} rule with no valid allowed terrains; it is ignored.");
                         continue;
                     }
@@ -129,7 +129,7 @@ namespace WFC.Terrain {
                     !(d.overlay.requireSides || d.overlay.requireCorners)) continue;
 
                 int targetOffset = t * wordsPerDomain;
-                if (!Any2(c.overlayTargets, targetOffset, wordsPerDomain)) continue;
+                if (!SliceHasAnyTerrain(c.overlayTargets, targetOffset, wordsPerDomain)) continue;
 
                 bool[] renderable = d.overlay.Renderable();
                 int    forbidden  = RenderableTables.CountForbidden(renderable);
@@ -159,9 +159,9 @@ namespace WFC.Terrain {
                 return mask;
             }
 
-            bool Any(ulong[] mask) => mask.Any(word => word != 0);
+            bool HasAnyTerrain(ulong[] mask) => mask.Any(word => word != 0);
 
-            bool Any2(ulong[] mask, int offset, int length) {
+            bool SliceHasAnyTerrain(ulong[] mask, int offset, int length) {
                 for (int i = 0; i < length; i++) {
                     if (mask[offset + i] != 0) return true;
                 }
