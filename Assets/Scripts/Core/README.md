@@ -140,42 +140,44 @@ There are a few areas this could be improved.
   in blocks.
 - Starting state: Reserved areas, pinned tiles
 - Weights: Any per-cell bias, such as a designer brush.
+
 ## Semantic DAG solving
+
+Semantic DAG solving
 
 `SemanticGraph` contains named nodes, weighted child edges, directed adjacency
 declarations, and a terrain ID on each leaf. A child can have multiple parents.
-The compiler validates references, weights, cycles, and reachability from the
-root. It builds descendant masks and assigns an ID to each distinct root-to-leaf
-route. For example, Root → Land → Dirt and Root → Shore → Dirt are distinct
-routes even though they have the same concrete terrain ID.
+The compiler validates references, weights, cycles, and reachability from the root,
+then enumerates routes: root-to-leaf paths. A route is a terrain in the context
+of the nodes above it. Root → Land → Dirt and Root → Shore → Dirt are two routes
+with the same terrain.
 
-`WFCSolver` takes an optional compiled graph. A semantic cell holds its current
-node and a bitset of viable routes. An observation chooses a direct child with
-at least one viable route and removes the routes through its siblings. Edge
-weights apply once per eligible child. When all eligible edges have zero weight,
-the solver chooses uniformly among them as a fallback. Cell scheduling still
-uses the solver's concrete terrain entropy.
+The solver's tiles are routes. A cell's domain is a bitset over routes,
+so propagation, windows, boundary rules and the heap are the flat kernel on a larger
+alphabet. A flat terrain set is a graph with a root and one leaf per terrain,
+where routes and terrains coincide.
 
-For a direction with semantic rules, two routes are compatible if an authored
-allowance matches a node on each route. This lets descendants inherit the
-allowance along those routes. Opposite directions are inferred automatically.
-Directions with no semantic rules use the existing concrete neighbor table.
-Concrete directional restrictions, required neighbors, and enabled terrain
-windows still apply. The propagation queue removes any route that has no
-compatible surviving route in a neighbor. This can rule out a child while its
-parent remains viable through another child. Windows read the projected
-concrete terrain choices and any removals flow back into the route domains.
+`RouteRules.Expand` lifts the terrain rules to routes once per solver.
+A direction that the graph never declares keeps the terrain adjacency table.
+In a direction that it does declare, the declarations alone define the allowed pairs:
+a route may neighbour the routes through every neighbour node declared by any
+node on it. Declarations inherit down the graph, a leaf can add to what its ancestors
+grant, and the compiler adds each opposite-direction declaration. Explicit directional
+terrain restrictions still apply. To keep one variant narrower than a sibling,
+grant the extra neighbours on the sibling rather than on their shared parent.
 
-`Solve(initialSemanticNodes: ...)` accepts one node ID per cell, or `-1` to
-start at the root. When a node has multiple parents, all route prefixes reaching
-that starting node remain eligible until constraints or search resolve them.
-Search retries restore both concrete and semantic domains and restart at the
-specified nodes. After success, `GetSemanticPath(cell)` returns an ordered copy
-from the starting node to the chosen leaf. Flat solves and failed semantic
-solves have empty paths.
+Observation takes one step down the graph. The cell's remaining routes share
+a prefix from the root. At the first position where they differ, each distinct
+child edge is weighted by its authored weight times the mean tile weight of the
+routes still using it. One edge is chosen and the routes through the others are
+removed. If every weight is zero the choice is uniform. Tile weights are the terrain
+weights, or the per-cell biome weights when set.
 
-Explicit route expansion keeps propagation and path reconstruction simple,
-with a cost that depends on the number of root-to-leaf routes. Compilation
-rejects graphs above 16,384 routes or 1,048,576 total node entries across routes.
-The solver also limits its route compatibility table to 64 MiB. Highly connected
-DAGs can reach these limits with comparatively few nodes.
+`Solve(initialSemanticNodes: ...)` takes one node ID per cell, or `-1` for the root,
+and starts the cell with the routes through that node. After success, `Layout` holds
+terrains, `SemanticNodes` holds each cell's leaf, and `GetSemanticPath(cell)` returns
+the path from the starting node to the leaf. Failed solves have empty paths.
+
+Compilation rejects graphs above 16,384 routes or 1,048,576 total node entries
+across routes. The expanded support table is limited to 64 MiB. Shared leaves
+multiply routes, so highly connected DAGs reach these limits quickly.

@@ -53,9 +53,9 @@ have four times Dirt's weight under their respective parent.
 
 In code, `WFCTerrainGenerator.GetSemanticPath(x, y)` returns the path taken in
 a successfully generated cell, beginning at its authored starting node or at
-Root. `TerrainAt(x, y)` still returns its concrete terrain ID. A `TerrainSet`
-with an empty graph field, such as the original `TerrainSet` demo asset, runs
-flat WFC when both semantic placement lists are empty.
+Root. `TerrainAt(x, y)` still returns its concrete terrain ID. A TerrainSet
+with an empty graph field uses a flat graph, a root with one leaf per terrain,
+and solves exactly as plain WFC does.
 
 In Play mode, select the generator and set **Display → View** to **Semantic
 Paths**. Use **Previous** and **Next** in the Game view to inspect the recorded
