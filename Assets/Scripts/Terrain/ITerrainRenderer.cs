@@ -44,7 +44,7 @@ namespace WFC.Terrain {
             cellSize = generator.cellSize;
             view     = generator.view;
             overlays = generator.overlays;
-            if (view == WFCTerrainGenerator.View.SemanticPaths)
+            if (view == WFCTerrainGenerator.View.Logic)
                 semanticColorAt = generator.SemanticColorAt;
         }
 

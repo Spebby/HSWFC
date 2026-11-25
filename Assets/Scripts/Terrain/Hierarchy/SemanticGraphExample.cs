@@ -8,26 +8,26 @@ public class SemanticGraphExample : MonoBehaviour {
         SemanticGraph graph = new(0);
 
         // Semantic groups.
-        graph.Nodes.Add(new SemanticNode("Root", 0));
-        graph.Nodes.Add(new SemanticNode("Land", 1));
-        graph.Nodes.Add(new SemanticNode("Shore", 2));
+        graph.Nodes.Add(new SemanticNode(0));
+        graph.Nodes.Add(new SemanticNode(1));
+        graph.Nodes.Add(new SemanticNode(2));
 
         // Leaves: graph node ID followed by concrete terrain ID.
-        graph.Nodes.Add(new SemanticNode("Grass", 3, 0));
-        graph.Nodes.Add(new SemanticNode("Dirt", 4, 1));
-        graph.Nodes.Add(new SemanticNode("Water", 5, 2));
+        graph.Nodes.Add(new SemanticNode(3, 0));
+        graph.Nodes.Add(new SemanticNode(4, 1));
+        graph.Nodes.Add(new SemanticNode(5, 2));
 
         // Root can become Land or Shore.
-        graph.Nodes[0].Children.Add(new SemanticEdge(1, 1.0f));
-        graph.Nodes[0].Children.Add(new SemanticEdge(2, 1.0f));
+        graph.Nodes[0].children.Add(new SemanticEdge(1, 1.0f));
+        graph.Nodes[0].children.Add(new SemanticEdge(2, 1.0f));
 
         // Land can become Grass or Dirt.
-        graph.Nodes[1].Children.Add(new SemanticEdge(3, 1.0f));
-        graph.Nodes[1].Children.Add(new SemanticEdge(4, 1.0f));
+        graph.Nodes[1].children.Add(new SemanticEdge(3, 1.0f));
+        graph.Nodes[1].children.Add(new SemanticEdge(4, 1.0f));
 
         // Shore can become Dirt or Water. Dirt is shared, so it appears on two routes.
-        graph.Nodes[2].Children.Add(new SemanticEdge(4, 1.0f));
-        graph.Nodes[2].Children.Add(new SemanticEdge(5, 1.0f));
+        graph.Nodes[2].children.Add(new SemanticEdge(4, 1.0f));
+        graph.Nodes[2].children.Add(new SemanticEdge(5, 1.0f));
 
         // Adjacency is granted per direction, and the opposite direction is inferred. Land cells may sit beside
         // Land or Dirt, and Dirt (on either route) may sit beside Land, Shore and Water.

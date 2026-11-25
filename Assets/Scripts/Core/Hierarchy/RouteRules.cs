@@ -10,7 +10,7 @@ namespace WFC.Core {
     /// targets and markers, weights) comes out indexed by route.
     /// </summary>
     internal static class RouteRules {
-        const long MaxSupportBytes = 64L * 1024 * 1024;
+        const long MAX_BYTES = 64L * 1024 * 1024;
 
         public static WFCRules Expand(WFCRules terrain, CompiledSemanticGraph graph) {
             int terrainCount = terrain.count, terrainWords = terrain.wordsPerDomain;
@@ -19,10 +19,10 @@ namespace WFC.Core {
                 throw new ArgumentException("The semantic graph must match the rules' terrain count.", nameof(graph));
 
             long supportWords = (long)Dirs.Count * routeCount * routeWords;
-            if (supportWords * sizeof(ulong) > MaxSupportBytes)
+            if (supportWords * sizeof(ulong) > MAX_BYTES) {
                 throw new ArgumentException(
-                    $"Route adjacency needs {supportWords * sizeof(ulong) >> 20} MiB, above the {MaxSupportBytes >> 20} MiB limit. Simplify the graph.",
-                    nameof(graph));
+                    $"Route adjacency needs {supportWords * sizeof(ulong) >> 20} MiB, above the {MAX_BYTES >> 20} MiB limit. Simplify the graph.", nameof(graph));
+            }
 
             ulong[] routesOfTerrain = new ulong[checked(terrainCount * routeWords)];
             for (int route = 0; route < routeCount; route++)
@@ -34,29 +34,25 @@ namespace WFC.Core {
             for (int d = 0; d < Dirs.Count; d++) {
                 Array.Clear(expanded, 0, expanded.Length);
                 for (int t = 0; t < terrainCount; t++)
-                    ExpandInto(terrain.support, (d * terrainCount + t) * terrainWords, terrainWords, terrainCount,
-                        routesOfTerrain, routeWords, expanded, t * routeWords);
+                    ExpandInto(terrain.support, (d * terrainCount + t) * terrainWords, terrainWords, terrainCount, routesOfTerrain, routeWords, expanded, t * routeWords);
 
                 for (int route = 0; route < routeCount; route++)
-                    Array.Copy(expanded, graph.RouteTerrainIds[route] * routeWords,
-                        support, (d * routeCount + route) * routeWords, routeWords);
+                    Array.Copy(expanded, graph.RouteTerrainIds[route] * routeWords, support, (d * routeCount + route) * routeWords, routeWords);
             }
 
             ApplyDeclarations(terrain, graph, support, routesOfTerrain, routeCount, routeWords);
 
             ulong[] mustExist = new ulong[Dirs.Count * routeWords];
-            for (int d = 0; d < Dirs.Count; d++)
-                ExpandInto(terrain.mustExist, d * terrainWords, terrainWords, terrainCount,
-                    routesOfTerrain, routeWords, mustExist, d * routeWords);
+            for (int d = 0; d < Dirs.Count; d++) {
+                ExpandInto(terrain.mustExist, d * terrainWords, terrainWords, terrainCount, routesOfTerrain, routeWords, mustExist, d * routeWords);
+            }
 
             int     windowCount = terrain.windowCount;
             ulong[] targets     = new ulong[checked(windowCount * routeWords)];
             ulong[] markers     = new ulong[checked(windowCount * routeWords)];
             for (int k = 0; k < windowCount; k++) {
-                ExpandInto(terrain.windowTargets, k * terrainWords, terrainWords, terrainCount,
-                    routesOfTerrain, routeWords, targets, k * routeWords);
-                ExpandInto(terrain.windowMarkers, k * terrainWords, terrainWords, terrainCount,
-                    routesOfTerrain, routeWords, markers, k * routeWords);
+                ExpandInto(terrain.windowTargets, k * terrainWords, terrainWords, terrainCount, routesOfTerrain, routeWords, targets, k * routeWords);
+                ExpandInto(terrain.windowMarkers, k * terrainWords, terrainWords, terrainCount, routesOfTerrain, routeWords, markers, k * routeWords);
             }
 
             float[] weight = new float[routeCount];
@@ -107,8 +103,7 @@ namespace WFC.Core {
                 if (directional != null) {
                     Array.Clear(directional, 0, directional.Length);
                     for (int t = 0; t < terrainCount; t++)
-                        ExpandInto(terrain.directionalSupport, (d * terrainCount + t) * terrainWords, terrainWords, terrainCount,
-                            routesOfTerrain, routeWords, directional, t * routeWords);
+                        ExpandInto(terrain.directionalSupport, (d * terrainCount + t) * terrainWords, terrainWords, terrainCount, routesOfTerrain, routeWords, directional, t * routeWords);
                 }
 
                 for (int route = 0; route < routeCount; route++) {

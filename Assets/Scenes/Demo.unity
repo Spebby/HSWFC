@@ -286,7 +286,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 67f1e960030edf1aebd39403af1a45f3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Terrain::WFC.Terrain.WFCTerrainGenerator
-  terrainSet: {fileID: 11400000, guid: c0a3e7a91cd34f5eab73138c6d8b01e7, type: 2}
+  terrainGraph: {fileID: 11400000, guid: 2e45b8a3f6674d2a88acf0656888b663, type: 2}
   cellSize: 1
   semanticPlacements:
   - cell: {x: 18, y: 16}

@@ -6,14 +6,14 @@ namespace WFC.Tests {
         // Root -> Land | Shore, both -> Dirt. One terrain, two routes.
         static SemanticGraph SharedLeafGraph(float landWeight = 1f, float shoreWeight = 1f) {
             SemanticGraph graph = new(0);
-            graph.Nodes.Add(new SemanticNode("Root", 0));
-            graph.Nodes.Add(new SemanticNode("Land", 1));
-            graph.Nodes.Add(new SemanticNode("Shore", 2));
-            graph.Nodes.Add(new SemanticNode("Dirt", 3, 0));
-            graph.Nodes[0].Children.Add(new SemanticEdge(1, landWeight));
-            graph.Nodes[0].Children.Add(new SemanticEdge(2, shoreWeight));
-            graph.Nodes[1].Children.Add(new SemanticEdge(3, 1f));
-            graph.Nodes[2].Children.Add(new SemanticEdge(3, 1f));
+            graph.Nodes.Add(new SemanticNode(0));
+            graph.Nodes.Add(new SemanticNode(1));
+            graph.Nodes.Add(new SemanticNode(2));
+            graph.Nodes.Add(new SemanticNode(3, 0));
+            graph.Nodes[0].children.Add(new SemanticEdge(1, landWeight));
+            graph.Nodes[0].children.Add(new SemanticEdge(2, shoreWeight));
+            graph.Nodes[1].children.Add(new SemanticEdge(3, 1f));
+            graph.Nodes[2].children.Add(new SemanticEdge(3, 1f));
             return graph;
         }
 
@@ -60,17 +60,17 @@ namespace WFC.Tests {
 
         static CompiledSemanticGraph PartialRefinementGraph() {
             SemanticGraph graph = new(0);
-            graph.Nodes.Add(new SemanticNode("Root", 0));
-            graph.Nodes.Add(new SemanticNode("Land", 1));
-            graph.Nodes.Add(new SemanticNode("Shore", 2));
-            graph.Nodes.Add(new SemanticNode("Grass", 3, 0));
-            graph.Nodes.Add(new SemanticNode("Dirt", 4, 1));
-            graph.Nodes.Add(new SemanticNode("Water", 5, 2));
-            graph.Nodes[0].Children.Add(new SemanticEdge(1, 1f));
-            graph.Nodes[0].Children.Add(new SemanticEdge(2, 1f));
-            graph.Nodes[1].Children.Add(new SemanticEdge(3, 1f));
-            graph.Nodes[2].Children.Add(new SemanticEdge(4, 1f));
-            graph.Nodes[2].Children.Add(new SemanticEdge(5, 10f));
+            graph.Nodes.Add(new SemanticNode(0));
+            graph.Nodes.Add(new SemanticNode(1));
+            graph.Nodes.Add(new SemanticNode(2));
+            graph.Nodes.Add(new SemanticNode(3, 0));
+            graph.Nodes.Add(new SemanticNode(4, 1));
+            graph.Nodes.Add(new SemanticNode(5, 2));
+            graph.Nodes[0].children.Add(new SemanticEdge(1, 1f));
+            graph.Nodes[0].children.Add(new SemanticEdge(2, 1f));
+            graph.Nodes[1].children.Add(new SemanticEdge(3, 1f));
+            graph.Nodes[2].children.Add(new SemanticEdge(4, 1f));
+            graph.Nodes[2].children.Add(new SemanticEdge(5, 10f));
             graph.Adjacencies.Add(new SemanticAdjacency(1, Direction.E, 4));
             return SemanticGraphCompiler.Compile(graph, 3);
         }
@@ -123,11 +123,11 @@ namespace WFC.Tests {
         [Test]
         public void SemanticTileIdsBeyondTheFirstDomainWordArePreserved() {
             SemanticGraph graph = new(0);
-            graph.Nodes.Add(new SemanticNode("Root", 0));
-            graph.Nodes.Add(new SemanticNode("Low terrain ID", 1, 0));
-            graph.Nodes.Add(new SemanticNode("High terrain ID", 2, 64));
-            graph.Nodes[0].Children.Add(new SemanticEdge(1, 0f));
-            graph.Nodes[0].Children.Add(new SemanticEdge(2, 1f));
+            graph.Nodes.Add(new SemanticNode(0));
+            graph.Nodes.Add(new SemanticNode(1, 0));
+            graph.Nodes.Add(new SemanticNode(2, 64));
+            graph.Nodes[0].children.Add(new SemanticEdge(1, 0f));
+            graph.Nodes[0].children.Add(new SemanticEdge(2, 1f));
             CompiledSemanticGraph compiled = SemanticGraphCompiler.Compile(graph, 65);
             using WFCSolver solver = new(new WFCRulesBuilder(65).Build(), 1, 1, semanticGraph: compiled);
 
@@ -140,12 +140,12 @@ namespace WFC.Tests {
         public void RoutesBeyondTheFirstDomainWordSolve() {
             // 70 leaves under one meta-tile: 70 routes, two domain words.
             SemanticGraph graph = new(0);
-            graph.Nodes.Add(new SemanticNode("Root", 0));
-            graph.Nodes.Add(new SemanticNode("Group", 1));
-            graph.Nodes[0].Children.Add(new SemanticEdge(1, 1f));
+            graph.Nodes.Add(new SemanticNode(0));
+            graph.Nodes.Add(new SemanticNode(1));
+            graph.Nodes[0].children.Add(new SemanticEdge(1, 1f));
             for (int t = 0; t < 70; t++) {
-                graph.Nodes.Add(new SemanticNode($"Leaf {t}", t + 2, t));
-                graph.Nodes[1].Children.Add(new SemanticEdge(t + 2, t == 69 ? 1f : 0f));
+                graph.Nodes.Add(new SemanticNode(t + 2, t));
+                graph.Nodes[1].children.Add(new SemanticEdge(t + 2, t == 69 ? 1f : 0f));
             }
 
             CompiledSemanticGraph compiled = SemanticGraphCompiler.Compile(graph, 70);
@@ -161,21 +161,21 @@ namespace WFC.Tests {
         // different weights, so they share leaves and differ only in weights and in what may neighbour them.
         static SemanticGraph ForestGraph() {
             SemanticGraph graph = new(0);
-            graph.Nodes.Add(new SemanticNode("Root", 0));
-            graph.Nodes.Add(new SemanticNode("Forest", 1));
-            graph.Nodes.Add(new SemanticNode("Sparse", 2));
-            graph.Nodes.Add(new SemanticNode("Deep", 3));
-            graph.Nodes.Add(new SemanticNode("Grass", 4, 0));
-            graph.Nodes.Add(new SemanticNode("Tree", 5, 1));
-            graph.Nodes.Add(new SemanticNode("Water", 6, 2));
-            graph.Nodes[0].Children.Add(new SemanticEdge(1, 1f));
-            graph.Nodes[0].Children.Add(new SemanticEdge(6, 1f));
-            graph.Nodes[1].Children.Add(new SemanticEdge(2, 1f));
-            graph.Nodes[1].Children.Add(new SemanticEdge(3, 1f));
-            graph.Nodes[2].Children.Add(new SemanticEdge(4, 1f));
-            graph.Nodes[2].Children.Add(new SemanticEdge(5, 1f));
-            graph.Nodes[3].Children.Add(new SemanticEdge(4, 0.1f));
-            graph.Nodes[3].Children.Add(new SemanticEdge(5, 1f));
+            graph.Nodes.Add(new SemanticNode(0));
+            graph.Nodes.Add(new SemanticNode(1));
+            graph.Nodes.Add(new SemanticNode(2));
+            graph.Nodes.Add(new SemanticNode(3));
+            graph.Nodes.Add(new SemanticNode(4, 0));
+            graph.Nodes.Add(new SemanticNode(5, 1));
+            graph.Nodes.Add(new SemanticNode(6, 2));
+            graph.Nodes[0].children.Add(new SemanticEdge(1, 1f));
+            graph.Nodes[0].children.Add(new SemanticEdge(6, 1f));
+            graph.Nodes[1].children.Add(new SemanticEdge(2, 1f));
+            graph.Nodes[1].children.Add(new SemanticEdge(3, 1f));
+            graph.Nodes[2].children.Add(new SemanticEdge(4, 1f));
+            graph.Nodes[2].children.Add(new SemanticEdge(5, 1f));
+            graph.Nodes[3].children.Add(new SemanticEdge(4, 0.1f));
+            graph.Nodes[3].children.Add(new SemanticEdge(5, 1f));
 
             // Sparse forest may border forest and water. Deep forest only borders forest. The extra grant sits on
             // Sparse rather than on Forest, which Deep would inherit.
@@ -268,18 +268,18 @@ namespace WFC.Tests {
         // Terrains: Grass 0, Dirt 1, Water 2. This is the demo scene's graph and terrain rules.
         static CompiledSemanticGraph DemoGraph() {
             SemanticGraph graph = new(0);
-            graph.Nodes.Add(new SemanticNode("Root", 0));
-            graph.Nodes.Add(new SemanticNode("Land", 1));
-            graph.Nodes.Add(new SemanticNode("Shore", 2));
-            graph.Nodes.Add(new SemanticNode("Grass", 3, 0));
-            graph.Nodes.Add(new SemanticNode("Dirt", 4, 1));
-            graph.Nodes.Add(new SemanticNode("Water", 5, 2));
-            graph.Nodes[0].Children.Add(new SemanticEdge(1, 1f));
-            graph.Nodes[0].Children.Add(new SemanticEdge(2, 1f));
-            graph.Nodes[1].Children.Add(new SemanticEdge(3, 4f));
-            graph.Nodes[1].Children.Add(new SemanticEdge(4, 1f));
-            graph.Nodes[2].Children.Add(new SemanticEdge(4, 1f));
-            graph.Nodes[2].Children.Add(new SemanticEdge(5, 4f));
+            graph.Nodes.Add(new SemanticNode(0));
+            graph.Nodes.Add(new SemanticNode(1));
+            graph.Nodes.Add(new SemanticNode(2));
+            graph.Nodes.Add(new SemanticNode(3, 0));
+            graph.Nodes.Add(new SemanticNode(4, 1));
+            graph.Nodes.Add(new SemanticNode(5, 2));
+            graph.Nodes[0].children.Add(new SemanticEdge(1, 1f));
+            graph.Nodes[0].children.Add(new SemanticEdge(2, 1f));
+            graph.Nodes[1].children.Add(new SemanticEdge(3, 4f));
+            graph.Nodes[1].children.Add(new SemanticEdge(4, 1f));
+            graph.Nodes[2].children.Add(new SemanticEdge(4, 1f));
+            graph.Nodes[2].children.Add(new SemanticEdge(5, 4f));
 
             // Authored for North and East only. The compiler adds South and West.
             foreach (Direction direction in new[] { Direction.N, Direction.E }) {
@@ -337,20 +337,92 @@ namespace WFC.Tests {
             }
         }
 
+        // Root -> Land | Shore. Land -> Grass | Dirt. Shore -> Dirt | Water. Terrains: Grass 0, Dirt 1, Water 2.
+        static SemanticGraph LandShoreGraph() {
+            SemanticGraph graph = new(0);
+            graph.Nodes.Add(new SemanticNode(0));
+            graph.Nodes.Add(new SemanticNode(1));
+            graph.Nodes.Add(new SemanticNode(2));
+            graph.Nodes.Add(new SemanticNode(3, 0));
+            graph.Nodes.Add(new SemanticNode(4, 1));
+            graph.Nodes.Add(new SemanticNode(5, 2));
+            graph.Nodes[0].children.Add(new SemanticEdge(1, 1f));
+            graph.Nodes[0].children.Add(new SemanticEdge(2, 1f));
+            graph.Nodes[1].children.Add(new SemanticEdge(3, 1f));
+            graph.Nodes[1].children.Add(new SemanticEdge(4, 1f));
+            graph.Nodes[2].children.Add(new SemanticEdge(4, 1f));
+            graph.Nodes[2].children.Add(new SemanticEdge(5, 1f));
+            return graph;
+        }
+
+        static WFCRules AnyAdjacency(int terrains) {
+            WFCRulesBuilder builder = new(terrains);
+            for (int a = 0; a < terrains; a++)
+                for (int b = a; b < terrains; b++) builder.AllowCardinal(a, b);
+            return builder.Build();
+        }
+
+        [Test]
+        public void RouteBiomeCentersTakeTheDeepestNodeThatStatesOne() {
+            SemanticGraph graph = LandShoreGraph();
+            graph.Nodes[1].biomeCenter = 0.8f; // Land
+            graph.Nodes[4].biomeCenter = 0.1f; // Dirt, shared by both parents
+            CompiledSemanticGraph compiled = SemanticGraphCompiler.Compile(graph, 3);
+
+            Assert.IsTrue(compiled.HasBiome);
+            // Routes in order: Land-Grass, Land-Dirt, Shore-Dirt, Shore-Water.
+            Assert.AreEqual(0.8f, compiled.RouteBiomeCenters[0]);
+            Assert.AreEqual(0.1f, compiled.RouteBiomeCenters[1]);
+            Assert.AreEqual(0.1f, compiled.RouteBiomeCenters[2]);
+            Assert.IsTrue(float.IsNaN(compiled.RouteBiomeCenters[3]));
+            Assert.IsTrue(!SemanticGraphCompiler.Compile(LandShoreGraph(), 3).HasBiome);
+        }
+
+        [Test]
+        public void NaNBiomeCentersLeaveWeightsUntouched() {
+            float[] weights = BiomeWeights.Build(4, 4, 1, new[] { 1f, 1f }, new[] { float.NaN, 0.5f }, 1f);
+            for (int cell = 0; cell < 16; cell++) {
+                Assert.AreEqual(1f, weights[cell * 2]);
+                Assert.IsTrue(weights[cell * 2 + 1] <= 1f);
+            }
+        }
+
+        [Test]
+        public void PerRouteWeightsBiasChoicesAtEveryLevelOfTheGraph() {
+            CompiledSemanticGraph compiled = SemanticGraphCompiler.Compile(LandShoreGraph(), 3);
+            using WFCSolver solver = new(AnyAdjacency(3), 20, 20, hasPerCellWeights: true, semanticGraph: compiled);
+            Assert.AreEqual(4, solver.TileCount);
+
+            // Favour the Land routes (0 and 1) over the Shore routes (2 and 3) in every cell.
+            float[] weights = new float[400 * 4];
+            for (int cell = 0; cell < 400; cell++) {
+                weights[cell * 4 + 0] = weights[cell * 4 + 1] = 1f;
+                weights[cell * 4 + 2] = weights[cell * 4 + 3] = 0.0001f;
+            }
+
+            Assert.AreEqual(WFCStatus.Success, solver.Solve(5, default, weights));
+            int shore = 0;
+            for (int cell = 0; cell < 400; cell++) {
+                if (solver.GetSemanticPath(cell)[1] == 2) shore++;
+            }
+
+            Assert.Less(shore, 20);
+        }
+
         [Test]
         public void RetryDiscardsPathsFromAContradictoryBranch() {
             SemanticGraph graph = new(0);
-            graph.Nodes.Add(new SemanticNode("Root", 0));
-            graph.Nodes.Add(new SemanticNode("Alternating", 1));
-            graph.Nodes.Add(new SemanticNode("Uniform", 2));
-            graph.Nodes.Add(new SemanticNode("First", 3, 0));
-            graph.Nodes.Add(new SemanticNode("Second", 4, 0));
-            graph.Nodes.Add(new SemanticNode("Only", 5, 0));
-            graph.Nodes[0].Children.Add(new SemanticEdge(1, 1f));
-            graph.Nodes[0].Children.Add(new SemanticEdge(2, 1f));
-            graph.Nodes[1].Children.Add(new SemanticEdge(3, 1f));
-            graph.Nodes[1].Children.Add(new SemanticEdge(4, 1f));
-            graph.Nodes[2].Children.Add(new SemanticEdge(5, 1f));
+            graph.Nodes.Add(new SemanticNode(0));
+            graph.Nodes.Add(new SemanticNode(1));
+            graph.Nodes.Add(new SemanticNode(2));
+            graph.Nodes.Add(new SemanticNode(3, 0));
+            graph.Nodes.Add(new SemanticNode(4, 0));
+            graph.Nodes.Add(new SemanticNode(5, 0));
+            graph.Nodes[0].children.Add(new SemanticEdge(1, 1f));
+            graph.Nodes[0].children.Add(new SemanticEdge(2, 1f));
+            graph.Nodes[1].children.Add(new SemanticEdge(3, 1f));
+            graph.Nodes[1].children.Add(new SemanticEdge(4, 1f));
+            graph.Nodes[2].children.Add(new SemanticEdge(5, 1f));
 
             // The alternating branch requires opposite colors across a triangle.
             // Initial propagation can support both colors locally. Committing a color exposes the contradiction.

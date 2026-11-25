@@ -1,10 +1,9 @@
 using System;
-using System.Runtime.CompilerServices;
 
 
 namespace WFC.Core {
     /// <summary>
-    /// Immutable, solver-ready rules. Build by WFCRulesBuilder.
+    /// Immutable, solver-ready rules. Built by WFCRulesBuilder.
     /// </summary>
     /// <remarks>
     /// Support[(d * Count + t) * WordsPerDomain + w] contains the tiles

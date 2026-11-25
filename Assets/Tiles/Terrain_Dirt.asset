@@ -24,7 +24,12 @@ MonoBehaviour:
   biomeCenter: 0.35
   canNeighbor:
   - {fileID: 11400000, guid: 14931abbd8d21902f974d4bf3b67e759, type: 2}
-  rules: []
+  rules:
+  - direction: 0
+    allowed:
+    - {fileID: 0}
+    - {fileID: 0}
+    mustExist: 1
   priority: 0
   overlay:
     mode: 0

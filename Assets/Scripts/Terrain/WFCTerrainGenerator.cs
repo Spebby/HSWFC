@@ -7,7 +7,7 @@ using WFC.Core;
 
 namespace WFC.Terrain {
     /// <summary>
-    /// Thin driver that wraps a compiled TerrainSet, solves for it, then renders it.
+    /// Thin driver that wraps a compiled SemanticGraph, solves for it, then renders it.
     /// </summary>
     public class WFCTerrainGenerator : MonoBehaviour {
         [Serializable]
@@ -26,15 +26,14 @@ namespace WFC.Terrain {
         public enum View {
             Final,
             Logic,
-            Regions,
-            SemanticPaths
+            Regions
         }
 
-        [Header("Data")] public TerrainSet terrainSet;
+        [Header("Data")] public SemanticGraphAsset terrainGraph;
         public float cellSize = 1f;
-        [Tooltip("Optional initial meta-tiles or leaves, using node indices from the TerrainSet's graph.")]
+        [Tooltip("Optional initial meta-tiles or leaves, using node indices from the graph.")]
         public List<SemanticPlacement> semanticPlacements = new();
-        [Tooltip("Optional rectangular starting zones, using node indices from the TerrainSet's graph.")]
+        [Tooltip("Optional rectangular starting zones, using node indices from the graph.")]
         public List<SemanticRegion> semanticRegions = new();
 
         [Header("Generation")] public int seed = 7;
@@ -111,8 +110,8 @@ namespace WFC.Terrain {
         [ContextMenu("Generate")]
         public void Generate() {
             const ulong BIOME_SALT = 0xB5297A4D3F84D5B5UL;
-            if (!terrainSet) {
-                Debug.LogWarning($"{nameof(WFCTerrainGenerator)}: assign a TerrainSet");
+            if (!terrainGraph) {
+                Debug.LogWarning($"{nameof(WFCTerrainGenerator)}: assign a Semantic Graph");
                 return;
             }
 
@@ -120,10 +119,9 @@ namespace WFC.Terrain {
             height = Mathf.Max(1, height);
             int[] initialSemanticNodes;
             try {
-                CompiledTerrain compiled = terrainSet.Compile();
+                CompiledTerrain compiled = TerrainCompiler.Compile(terrainGraph);
                 initialSemanticNodes = BuildInitialSemanticNodes(compiled.semanticGraph);
-                var solver = new WFCSolver(compiled.rules, width, height, regionalBias > 0f,
-                    useBurst ? new BurstWFCExecutor() : new ManagedIWFCExecutor(), compiled.semanticGraph);
+                WFCSolver solver = new(compiled.rules, width, height, regionalBias > 0f, useBurst ? new BurstWFCExecutor() : new ManagedIWFCExecutor(), compiled.semanticGraph);
 
                 _solver?.Dispose();
                 _solver = solver;
@@ -137,9 +135,12 @@ namespace WFC.Terrain {
             regionNoise = BiomeWeights.Noise(width, height, Mathf.Max(0.5f, biomeScale), s ^ BIOME_SALT);
             // ^ save for visualiser. Not actually used for anything otherwise.
 
-            float[] cw = regionalBias > 0f
-                ? BiomeWeights.Build(width, height, s ^ BIOME_SALT, ct.weight, ct.biomeCenter, regionalBias, biomeScale)
-                : null;
+            float[] cw = null;
+            if (regionalBias > 0f && ct.semanticGraph.HasBiome) {
+                float[] baseWeights = new float[ct.semanticGraph.RouteCount];
+                Array.Fill(baseWeights, 1f);
+                cw = BiomeWeights.Build(width, height, s ^ BIOME_SALT, baseWeights, ct.semanticGraph.RouteBiomeCenters, regionalBias, biomeScale);
+            }
 
             WFCStatus status = _solver.Solve(s, default, cw, maxAttempts, enforceVisualConstraints, initialSemanticNodes);
             if (status != WFCStatus.Success && enforceVisualConstraints && ct.rules.windowCount > 0) {
@@ -165,20 +166,20 @@ namespace WFC.Terrain {
             if (autoFrameCamera) FrameCamera();
         }
 
-        public int TerrainAt(int x, int y) => Layout == null ||
-            WFCSolver.IsOutOfBounds(x, y, _layoutWidth, _layoutHeight) ? -1 : Layout[y * _layoutWidth + x];
+        public int TerrainAt(int x, int y) => Layout == null || WFCSolver.IsOutOfBounds(x, y, _layoutWidth, _layoutHeight) ? -1 : Layout[y * _layoutWidth + x];
 
         /// <summary>Returns the semantic path at a cell of the generated map, or an empty array if unavailable.</summary>
         public int[] GetSemanticPath(int x, int y) {
-            if (Layout == null || ct?.semanticGraph == null || WFCSolver.IsOutOfBounds(x, y, _layoutWidth, _layoutHeight))
+            if (Layout == null || ct?.semanticGraph == null || WFCSolver.IsOutOfBounds(x, y, _layoutWidth, _layoutHeight)) {
                 return Array.Empty<int>();
+            }
 
             return _solver.GetSemanticPath(y * _layoutWidth + x);
         }
 
         void PrepareSemanticView() {
             _visibleSemanticNodes.Clear();
-            if (view != View.SemanticPaths || ct.semanticGraph == null) return;
+            if (view != View.Logic || ct.semanticGraph == null) return;
 
             if (_semanticPaths != null) return;
             _semanticPaths    = new int[Layout.Length][];
@@ -200,10 +201,9 @@ namespace WFC.Terrain {
         }
 
         Color SemanticNodeColor(int node) {
-            var graph = terrainSet ? terrainSet.semanticGraph : null;
-            if (graph && node < graph.nodes.Count) {
-                SemanticGraphAsset.Node entry = graph.nodes[node];
-                if (entry != null && entry.overridePreviewColor) {
+            if (terrainGraph && node < terrainGraph.nodes.Count) {
+                SemanticGraphAsset.Node entry = terrainGraph.nodes[node];
+                if (entry is { overridePreviewColor: true }) {
                     Color color = entry.previewColor;
                     color.a = 1f;
                     return color;
@@ -218,7 +218,7 @@ namespace WFC.Terrain {
         }
 
         void OnGUI() {
-            if (view != View.SemanticPaths || Layout == null || _semanticPaths == null) return;
+            if (view != View.Logic || Layout == null || _semanticPaths == null) return;
 
             int legendRows = Math.Min(_visibleSemanticNodes.Count, 9);
             GUILayout.BeginArea(new Rect(12, 12, 245, 55 + 23 * legendRows), GUI.skin.box);
@@ -238,8 +238,7 @@ namespace WFC.Terrain {
                     GUILayout.Label($"and {_visibleSemanticNodes.Count - 8} more");
                     break;
                 }
-                var graph = terrainSet ? terrainSet.semanticGraph : null;
-                string label = graph && node < graph.nodes.Count ? graph.nodes[node]?.name : null;
+                string label = terrainGraph && node < terrainGraph.nodes.Count ? terrainGraph.nodes[node]?.name : null;
                 GUILayout.BeginHorizontal();
                 Rect swatch = GUILayoutUtility.GetRect(14, 14, GUILayout.Width(14));
                 if (Event.current.type == EventType.Repaint) {
@@ -261,7 +260,7 @@ namespace WFC.Terrain {
 
         int[] BuildInitialSemanticNodes(CompiledSemanticGraph graph) {
             if (semanticPlacements.Count == 0 && semanticRegions.Count == 0) return null;
-            if (graph == null) throw new InvalidOperationException("Semantic placements and regions require a semantic graph on the TerrainSet.");
+            if (graph == null) throw new InvalidOperationException("Semantic placements and regions require a semantic graph.");
 
             int[] nodes = new int[checked(width * height)];
             Array.Fill(nodes, -1); // Unspecified cells begin at the root.

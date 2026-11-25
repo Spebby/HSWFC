@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using WFC.Core;
 
@@ -21,6 +22,9 @@ namespace WFC.Terrain {
             [Tooltip("Use the preview color below in Semantic Paths.")]
             public bool overridePreviewColor;
             public Color previewColor = Color.white;
+            [Tooltip("Prefer to appear where the regional noise is near the center below. Applies to everything below this node unless a deeper node states its own.")]
+            public bool useBiomeCenter;
+            [Range(0f, 1f)] public float biomeCenter = 0.5f;
             public List<Child> children = new();
         }
 
@@ -37,15 +41,26 @@ namespace WFC.Terrain {
         [Tooltip("Allowed semantic adjacencies. The opposite-direction rule is inferred automatically.")]
         public List<Adjacency> adjacencies = new();
 
-        /// <summary>Resolve leaf assets to the concrete terrain IDs of the current TerrainSet.</summary>
+        /// <summary>
+        /// The terrains this graph uses: each distinct leaf terrain once, in node order. A terrain's index here is its
+        /// terrain ID everywhere else. Leaves without a terrain are skipped, and reported when the graph is compiled.
+        /// </summary>
+        public List<TerrainDef> CollectTerrains() {
+            var terrains = new List<TerrainDef>();
+            foreach (Node node in nodes.Where(node => node != null && node.children.Count == 0 && node.terrain && !terrains.Contains(node.terrain))) {
+                terrains.Add(node.terrain);
+            }
+
+            return terrains;
+        }
+
+        /// <summary>Resolve leaf assets to the concrete terrain IDs in <paramref name="terrains"/>, normally <see cref="CollectTerrains"/>.</summary>
         public CompiledSemanticGraph Compile(IReadOnlyList<TerrainDef> terrains) {
             if (terrains == null) throw new ArgumentNullException(nameof(terrains));
 
             var terrainIds = new Dictionary<TerrainDef, int>();
-            for (int i = 0; i < terrains.Count; i++) {
-                TerrainDef terrain = terrains[i];
-                if (!terrain || !terrainIds.TryAdd(terrain, i))
-                    throw new ArgumentException("A semantic graph needs a TerrainSet with unique, non-null terrains.", nameof(terrains));
+            if (terrains.Where((terrain, i) => !terrain || !terrainIds.TryAdd(terrain, i)).Any()) {
+                throw new ArgumentException("A semantic graph needs unique, non-null terrains.", nameof(terrains));
             }
 
             var graph = new SemanticGraph(rootId);
@@ -54,15 +69,16 @@ namespace WFC.Terrain {
                 int terrainId = -1;
                 if (entry.children.Count == 0) {
                     if (!entry.terrain || !terrainIds.TryGetValue(entry.terrain, out terrainId))
-                        throw new InvalidOperationException($"Semantic leaf {nodeId} ({entry.name}) must reference a terrain in this TerrainSet.");
+                        throw new InvalidOperationException($"Semantic leaf {nodeId} ({entry.name}) must reference a terrain.");
                 } else if (entry.terrain) {
                     throw new InvalidOperationException($"Semantic node {nodeId} ({entry.name}) has children and cannot also reference a terrain.");
                 }
 
-                var node = new SemanticNode(entry.name, nodeId, terrainId);
+                var node                                   = new SemanticNode(nodeId, terrainId);
+                if (entry.useBiomeCenter) node.biomeCenter = entry.biomeCenter;
                 foreach (Child child in entry.children) {
                     if (child == null) throw new InvalidOperationException($"Semantic node {nodeId} has a missing child entry.");
-                    node.Children.Add(new SemanticEdge(child.nodeId, child.weight));
+                    node.children.Add(new SemanticEdge(child.nodeId, child.weight));
                 }
                 graph.Nodes.Add(node);
             }

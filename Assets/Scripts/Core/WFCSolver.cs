@@ -29,7 +29,7 @@ namespace WFC.Core {
         readonly int _height;
         readonly IWFCExecutor _executor;
 
-        readonly int _terrainCount, _tileCount, _cellCount;
+        readonly int _cellCount;
         readonly List<GCHandle> _pinnedHandles = new();
         readonly ulong[] _initialDomains;
         readonly int[] _initialSemanticNodes;
@@ -40,6 +40,9 @@ namespace WFC.Core {
         WFCKernelArgs _args;
         bool _isDisposed;
         readonly int _wordsPerDomain;
+
+        /// <summary>Number of routes: the tiles the solver works with, and the stride of per-cell weights.</summary>
+        public int TileCount { get; }
 
         /// <summary>Terrain index per cell, index = y * Width + x. Overwritten by every successful Solve.</summary>
         public int[] Layout { get; }
@@ -69,15 +72,14 @@ namespace WFC.Core {
             if (rules == null) throw new ArgumentNullException(nameof(rules));
             _width        = width;
             _height       = height;
-            _terrainCount = rules.count;
             _graph        = semanticGraph ?? SemanticGraphCompiler.Flat(rules.count);
             _rules        = RouteRules.Expand(rules, _graph);
-            _tileCount    = _rules.count;
+            TileCount    = _rules.count;
             _cellCount    = checked(width * height);
             _executor     = executor ?? new ManagedIWFCExecutor();
 
             // NOTE: there's a fair few pins here, if there's a throw then it'll leak, so may be good to be more defensive
-            _wordsPerDomain  = (_tileCount + 63) / 64;
+            _wordsPerDomain  = (TileCount + 63) / 64;
             int domainWordCount = checked(_cellCount * _wordsPerDomain);
 
             Layout          = new int[_cellCount];
@@ -93,13 +95,13 @@ namespace WFC.Core {
             _hasPerCellWeights = hasPerCellWeights;
 
             int weightCount = hasPerCellWeights
-                ? checked(_cellCount * _tileCount)
-                : _tileCount;
+                ? checked(_cellCount * TileCount)
+                : TileCount;
 
             int edgeCount = Math.Max(1, _graph.ChildWeights.Length);
 
             _args = new WFCKernelArgs {
-                width               = width, height = height, tileCount = _tileCount, windowCount = _rules.windowCount,
+                width               = width, height = height, tileCount = TileCount, windowCount = _rules.windowCount,
                 weights             = Pin(_rules.weight),
                 supportMasks        = Pin(_rules.support),
                 windowTargets       = Pin(_rules.windowCount == 0 ? new ulong[_wordsPerDomain] : _rules.windowTargets),
@@ -141,14 +143,15 @@ namespace WFC.Core {
         /// <summary>
         /// Solves the grid using the supplied seed and optional constraints.
         /// Initial domains restrict which routes may occupy each cell, one entry per cell per route word.
-        /// Cell weights hold one weight per terrain per cell and bias selection independently per cell.
+        /// Cell weights hold one weight per route per cell, cell-major, and bias selection independently per cell.
+        /// With a flat graph a route is a terrain.
         /// initialSemanticNodes gives each cell a node to start from, or -1 for the root; the cell can then only
         /// become routes through that node. Boundary constraints remove tiles whose MustExist neighbours would
         /// fall outside the grid. Window constraints can be disabled with useWindows.
         /// </summary>
         public WFCStatus Solve(ulong seed, ReadOnlySpan<ulong> initialDomains = default, ReadOnlySpan<float> cellWeights = default, int maxAttempts = 100, bool useWindows = true, ReadOnlySpan<int> initialSemanticNodes = default) {
             const string INIT_DOMAIN_LENGTH_MISMATCH = "initialDomains needs one entry per cell per domain word";
-            const string CELL_WEIGHT_COUNT_MISMATCH  = "cellWeights needs one entry per terrain per cell";
+            const string CELL_WEIGHT_COUNT_MISMATCH  = "cellWeights needs one entry per route per cell";
             const string SOLVER_CELL_WEIGHT_ERROR    = "This solver was not configured for per-cell weights";
             const float  MIN_TILE_WEIGHT             = 1e-4f;
 
@@ -170,18 +173,15 @@ namespace WFC.Core {
                 }
             }
 
-            // config per cell weights: one weight per terrain, shared by all of its routes
+            // config per cell weights
             if (_hasPerCellWeights) {
-                if (cellWeights.Length != checked(_cellCount * _terrainCount)) {
+                if (cellWeights.Length != checked(_cellCount * TileCount)) {
                     throw new ArgumentException(CELL_WEIGHT_COUNT_MISMATCH, nameof(cellWeights));
                 }
 
                 float* weights = _args.cellWeights;
-                for (int cell = 0; cell < _cellCount; cell++) {
-                    for (int route = 0; route < _tileCount; route++) {
-                        float weight = cellWeights[cell * _terrainCount + _graph.RouteTerrainIds[route]];
-                        weights[cell * _tileCount + route] = Math.Max(MIN_TILE_WEIGHT, weight);
-                    }
+                for (int i = 0; i < cellWeights.Length; i++) {
+                    weights[i] = Math.Max(MIN_TILE_WEIGHT, cellWeights[i]);
                 }
             } else if (!cellWeights.IsEmpty) {
                 throw new ArgumentException(SOLVER_CELL_WEIGHT_ERROR, nameof(cellWeights));
@@ -263,7 +263,7 @@ namespace WFC.Core {
             if (_routesThroughNode.TryGetValue(node, out ulong[] mask)) return mask;
 
             mask = new ulong[_wordsPerDomain];
-            for (int route = 0; route < _tileCount; route++) {
+            for (int route = 0; route < TileCount; route++) {
                 for (int i = _graph.RouteNodeOffsets[route]; i < _graph.RouteNodeOffsets[route + 1]; i++) {
                     if (_graph.RouteNodes[i] != node) continue;
                     mask[route >> 6] |= 1UL << (route & 63);
@@ -277,7 +277,7 @@ namespace WFC.Core {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ResetInitialDomains() {
-            int   remainder     = _tileCount & 63;
+            int   remainder     = TileCount & 63;
             ulong finalWordMask = remainder == 0 ? ulong.MaxValue : (1UL << remainder) - 1UL;
 
             for (int cell = 0; cell < _cellCount; cell++) {
@@ -291,7 +291,7 @@ namespace WFC.Core {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void MaskInitialDomains() {
-            int remainder = _tileCount & 63;
+            int remainder = TileCount & 63;
             if (remainder == 0) return;
 
             ulong finalWordMask = (1UL << remainder) - 1UL;
