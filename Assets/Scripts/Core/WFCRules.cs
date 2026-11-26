@@ -1,17 +1,17 @@
 using System;
-using System.Runtime.CompilerServices;
 
 
 namespace WFC.Core {
     /// <summary>
-    /// Immutable, solver-ready rules. Build by WFCRulesBuilder.
+    /// Immutable, solver-ready rules. Built by WFCRulesBuilder.
     /// </summary>
     /// <remarks>
     /// Support[(d * Count + t) * WordsPerDomain + w] contains the tiles
     /// allowed in direction d from tile t, stored as a multiword bitset.
     /// MustExist[d * WordsPerDomain + w] contains tiles that require an
     /// in-grid neighbour in direction d.
-    /// Window arrays are flattened by window index.
+    /// Window arrays are flattened by window index. A window's marker is a set of tiles, stored like
+    /// a domain, so a marker terrain can be several tiles once routes are expanded.
     /// </remarks>
     public sealed class WFCRules {
         /// <summary>64-bit words per tile domain.</summary>
@@ -23,21 +23,25 @@ namespace WFC.Core {
         public readonly int count;
         public readonly float[] weight;
         public readonly ulong[] support;
+        // Only the explicit directional rules, with no terrain whitelist. Null when there are none. A semantic graph
+        // that defines a direction's adjacency replaces the whitelist there but must still honour these masks.
+        internal readonly ulong[] directionalSupport;
         public readonly ulong[] mustExist;
         public readonly int windowCount;
         public readonly ulong[] windowTargets;
-        public readonly int[] windowMarker;
+        public readonly ulong[] windowMarkers;
         public readonly ulong[] windowFeasible;
 
-        internal WFCRules(int count, int wordsPerDomain, float[] weight, ulong[] support, ulong[] mustExist, ulong[] windowTargets, int[] windowMarker, ulong[] windowFeasible) {
+        internal WFCRules(int count, int wordsPerDomain, float[] weight, ulong[] support, ulong[] directionalSupport, ulong[] mustExist, ulong[] windowTargets, ulong[] windowMarkers, ulong[] windowFeasible) {
             this.count          = count;
             this.wordsPerDomain = wordsPerDomain;
             this.weight         = weight;
             this.support        = support;
+            this.directionalSupport = directionalSupport;
             this.mustExist      = mustExist;
-            windowCount         = windowMarker.Length;
+            windowCount         = windowMarkers.Length / wordsPerDomain;
             this.windowTargets  = windowTargets;
-            this.windowMarker   = windowMarker;
+            this.windowMarkers  = windowMarkers;
             this.windowFeasible = windowFeasible;
         }
 
@@ -290,9 +294,18 @@ namespace WFC.Core {
 
             // Apply explicit directional rules and their symmetric counterparts.
             ulong[] must = new ulong[checked(Dirs.Count * WordsPerDomain)];
+            ulong[] directionalSupport = _rules.Count == 0 ? null : new ulong[support.Length];
+            if (directionalSupport != null) {
+                for (int offset = 0; offset < support.Length; offset += WordsPerDomain)
+                    Array.Copy(full, 0, directionalSupport, offset, WordsPerDomain);
+            }
+
             foreach (DirectionalRule rule in _rules) {
                 int offset = ((int)rule.dir * TileCount + rule.tile) * WordsPerDomain;
-                for (int w = 0; w < WordsPerDomain; w++) support[offset + w] &= rule.allowed[w];
+                for (int w = 0; w < WordsPerDomain; w++) {
+                    support[offset + w]            &= rule.allowed[w];
+                    directionalSupport[offset + w] &= rule.allowed[w];
+                }
 
                 int   opposite = (int)Dirs.Opposite(rule.dir);
                 ulong tileBit  = 1UL << (rule.tile & 63);
@@ -301,7 +314,8 @@ namespace WFC.Core {
                 for (int x = 0; x < TileCount; x++) {
                     if (Has(rule.allowed, x)) continue;
                     int reverseOffset = (opposite * TileCount + x) * WordsPerDomain;
-                    support[reverseOffset + tileWord] &= ~tileBit;
+                    support[reverseOffset + tileWord]            &= ~tileBit;
+                    directionalSupport[reverseOffset + tileWord] &= ~tileBit;
                 }
 
                 // Record tiles that require an in-grid neighbour in this direction.
@@ -311,13 +325,13 @@ namespace WFC.Core {
             // Flatten window constraints into contiguous arrays for the unmanaged kernel.
             int     wc       = _windows.Count;
             ulong[] targets  = new ulong[checked(wc * WordsPerDomain)];
-            int[]   markers  = new int[wc];
+            ulong[] markers  = new ulong[checked(wc * WordsPerDomain)];
             ulong[] feasible = new ulong[checked(Math.Max(1, wc) * WFCRules.FEASIBLE_WORDS)];
 
             for (int k = 0; k < wc; k++) {
                 Window window = _windows[k];
                 Array.Copy(window.targets, 0, targets, k * WordsPerDomain, WordsPerDomain);
-                markers[k] = window.marker;
+                markers[k * WordsPerDomain + (window.marker >> 6)] |= 1UL << (window.marker & 63);
                 Array.Copy(window.feasible, 0, feasible, k * WFCRules.FEASIBLE_WORDS, WFCRules.FEASIBLE_WORDS);
             }
 
@@ -326,6 +340,7 @@ namespace WFC.Core {
                 WordsPerDomain,
                 (float[])_weight.Clone(),
                 support,
+                directionalSupport,
                 must,
                 targets,
                 markers,

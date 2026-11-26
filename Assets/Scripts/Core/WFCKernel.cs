@@ -25,10 +25,10 @@ namespace WFC.Core {
         public float* cellWeights;         // [cellCount * tileCount], optional
         public ulong* supportMasks;        // [8][tileCount][wordsPerDomain]
         public ulong* windowTargets;       // [windowCount][wordsPerDomain]
-        public int* windowMarker;          // [windowCount]
+        public ulong* windowMarkers;       // [windowCount][wordsPerDomain]
         public ulong* windowFeasibleMasks; // [windowCount][WFCRules.FEASIBLE_WORDS]
         public ulong* initialDomains;      // [cellCount][wordsPerDomain]
-        public int* result;                // [cellCount] tile index per cell, written on success
+        public int* result;                // [cellCount] tile (route) index per cell, written on success
         public int* resultInfo;            // [3]: status, failCell, attempts
 
         // working domain buffers: [cellCount][wordsPerDomain]
@@ -45,11 +45,20 @@ namespace WFC.Core {
         public int* heapPos;    // [cellCount]
 
         // ring queue
-        public int* queue;         // [2 * cellCount + 1]
+        public int* queue; // [2 * cellCount + 1]
 
         public int* changedCells;  // [cellCount]
         public byte* queuedFlags;  // [2 * cellCount] adjacency and window flags
         public byte* changedFlags; // [cellCount]
+
+        // Hierarchy. Tiles are routes: route r's incoming edges occupy [routeOffsets[r], routeOffsets[r + 1])
+        // of routeEdges, root first (-1). Flat WFC is a root with one leaf per tile.
+        public int* routeOffsets;  // [tileCount + 1]
+        public int* routeEdges;    // [total route length]
+        public float* edgeWeights; // [edgeCount] authored weight of each child edge
+        public int* edgeList;      // [edgeCount] scratch
+        public int* edgeCounts;    // [edgeCount] scratch
+        public float* edgeSums;    // [edgeCount] scratch
     }
 
     /// <summary>
@@ -83,7 +92,16 @@ namespace WFC.Core {
         readonly ulong* _windowTargets;
         readonly ulong* _windowFeasibleMasks;
         readonly ulong* _initialDomains;
-        readonly int* _windowMarker;
+        readonly ulong* _windowMarkers;
+        #endregion
+
+        #region Hierarchy buffers
+        readonly int* _routeOffsets;
+        readonly int* _routeEdges;
+        readonly float* _edgeWeights;
+        readonly int* _edgeList;
+        readonly int* _edgeCounts;
+        readonly float* _edgeSums;
         #endregion
 
         #region Output buffers
@@ -117,8 +135,12 @@ namespace WFC.Core {
 
         // support masks for a source tile in a given direction
         Domain S(Direction dir, int tile) => new(_supportMasks, (int)dir * _tileCount + tile, _wordsPerDomain);
+
         // target tile mask for a window rule
         Domain Wt(int window) => new(_windowTargets, window, _wordsPerDomain);
+
+        // marker tile mask for a window rule
+        Domain Wm(int window) => new(_windowMarkers, window, _wordsPerDomain);
 
         public WFCState(ref WFCKernelArgs a) {
             _w                   = a.width;
@@ -139,7 +161,13 @@ namespace WFC.Core {
             _domains             = a.domain;
             _baseDomains         = a.baseDomains;
             _scratch             = a.scratch;
-            _windowMarker        = a.windowMarker;
+            _windowMarkers       = a.windowMarkers;
+            _routeOffsets        = a.routeOffsets;
+            _routeEdges          = a.routeEdges;
+            _edgeWeights         = a.edgeWeights;
+            _edgeList            = a.edgeList;
+            _edgeCounts          = a.edgeCounts;
+            _edgeSums            = a.edgeSums;
             _result              = a.result;
             _changedFlags        = a.changedFlags;
             _resultInfo          = a.resultInfo;
@@ -188,17 +216,16 @@ namespace WFC.Core {
                 ResetSearchState();
                 // init entropy heat w/ all cells that still have multiple candidates
                 for (int i = 0; i < _cellCount; i++) {
-                    if (!D(i).IsSingle) _heap.Update(i, Entropy(i));
+                    if (!D(i).IsCollapsed) _heap.Update(i, Entropy(i));
                 }
 
                 bool ok = true;
                 // collapse lowest-entropy cell
                 while (_heap.Count > 0) {
                     int cell = _heap.Min;
-                    int pick = PickTile(cell);
 
                     // collapse cell & propagate constraints
-                    D(cell).SetOnly(pick);
+                    CollapseCell(cell);
                     OnDomainChanged(cell);
                     if (!Propagate()) {
                         ok = false;
@@ -212,7 +239,7 @@ namespace WFC.Core {
                 // if failed, discard attempt and retry
                 if (!ok) continue;
 
-                // extract resolved tile index & report success
+                // extract resolved tile (route) index & report success
                 for (int i = 0; i < _cellCount; i++) _result[i] = D(i).FirstSet();
                 Finish((int)WFCStatus.Success, -1, attempt);
                 return;
@@ -244,7 +271,7 @@ namespace WFC.Core {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void OnDomainChanged(int cell) {
             if (_changedFlags[cell] == 0) {
-                _changedFlags[cell]               = 1;
+                _changedFlags[cell]            = 1;
                 _changedCells[_changedCount++] = cell;
             }
 
@@ -286,8 +313,8 @@ namespace WFC.Core {
             int    x       = cell % _w, y = cell / _w;
 
             for (int d = 0; d < Count; d++) {
-                Direction dir  = (Direction)d;
-                int       nx = x + Dx(dir), ny = y + Dy(dir);
+                Direction dir = (Direction)d;
+                int       nx  = x + Dx(dir), ny = y + Dy(dir);
                 if (IsOutOfBounds(nx, ny, _w, _h)) continue;
 
                 // build union of tiles supported by every tile in the src domain
@@ -309,6 +336,7 @@ namespace WFC.Core {
                 // neighbour can only contain tiles supported by src domain
                 if (!ReduceDomain(ny * _w + nx, scratch)) return false;
             }
+
             return true;
         }
 
@@ -319,7 +347,11 @@ namespace WFC.Core {
         bool ReduceDomain(int cell, Domain supported) {
             Domain d = D(cell);
             if (!d.AndWith(supported)) return true;
-            if (d.IsEmpty) { _failedCell = cell; return false; }
+            if (d.IsEmpty) {
+                _failedCell = cell;
+                return false;
+            }
+
             OnDomainChanged(cell);
             return true;
         }
@@ -334,22 +366,26 @@ namespace WFC.Core {
                 Domain target = Wt(window);
                 if (!centre.Intersects(target)) continue;
 
-                int marker = _windowMarker[window];
+                Domain marker = Wm(window);
                 GetWindowMarkerMasks(cx, cy, marker, out int mustMask, out int mayMask);
                 ulong* feasible = _windowFeasibleMasks + (long)window * WFCRules.FEASIBLE_WORDS;
 
                 if (!IsWindowRenderable(feasible, mustMask, mayMask)) {
                     centre.AndNotWith(target);
-                    if (centre.IsEmpty) { _failedCell = cell; return false; }
+                    if (centre.IsEmpty) {
+                        _failedCell = cell;
+                        return false;
+                    }
+
                     OnDomainChanged(cell);
                     continue;
                 }
-                if (!centre.IsSingle) continue;
-                // neighbour loop unchanged apart from passing `marker`
+
+                if (!centre.IsCollapsed) continue;
 
                 for (int d = 0; d < Count; d++) {
                     Direction dir = (Direction)d;
-                    int nx = cx + Dx(dir), ny = cy + Dy(dir);
+                    int       nx  = cx + Dx(dir), ny = cy + Dy(dir);
                     if (IsOutOfBounds(nx, ny, _w, _h)) continue;
 
                     int neighbour = ny * _w + nx;
@@ -363,21 +399,22 @@ namespace WFC.Core {
         }
 
         /// <summary>Builds the marker occupancy bounds around a window centre.</summary>
-        /// <param name="mustMask">Contains directions where the marker is possible.</param>
-        /// <param name="mayMask">Contains directions where the marker is guaranteed.</param>
+        /// <param name="mustMask">Contains directions where the marker is guaranteed.</param>
+        /// <param name="mayMask">Contains directions where the marker is possible.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void GetWindowMarkerMasks(int cx, int cy, int marker, out int mustMask, out int mayMask) {
-            mustMask = 0; mayMask = 0;
+        void GetWindowMarkerMasks(int cx, int cy, Domain marker, out int mustMask, out int mayMask) {
+            mustMask = 0;
+            mayMask  = 0;
             for (int d = 0; d < Count; d++) {
                 Direction dir = (Direction)d;
-                int nx = cx + Dx(dir), ny = cy + Dy(dir);
+                int       nx  = cx + Dx(dir), ny = cy + Dy(dir);
                 if (IsOutOfBounds(nx, ny, _w, _h)) continue;
 
                 Domain nd = D(ny * _w + nx);
-                if (!nd.Has(marker)) continue;
+                if (!nd.Intersects(marker)) continue;
 
                 mayMask |= 1 << d;
-                if (nd.IsOnly(marker)) mustMask |= 1 << d;
+                if (nd.IsSubsetOf(marker)) mustMask |= 1 << d;
             }
         }
 
@@ -389,9 +426,10 @@ namespace WFC.Core {
             Bit(feasible, PackWindowMasks(mustMask, mayMask));
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        bool PruneWindowNeighbour(int cell, Direction direction, int marker, int mustMask, int mayMask, ulong* feasible) {
-            Domain nd              = D(cell);
-            if (!nd.Has(marker) || nd.IsOnly(marker)) return true;
+        bool PruneWindowNeighbour(int cell, Direction direction, Domain marker, int mustMask, int mayMask,
+                                  ulong* feasible) {
+            Domain nd = D(cell);
+            if (!nd.Intersects(marker) || nd.IsSubsetOf(marker)) return true;
 
             int directionBit         = 1 << (int)direction;
             int mustWithoutDirection = mustMask & ~directionBit;
@@ -415,11 +453,11 @@ namespace WFC.Core {
                     _failedCell = cell;
                     return false;
                 case false:
-                    nd.Clear(marker);
+                    nd.AndNotWith(marker);
                     break;
                 default: {
                     if (otherIsFeasible) return true;
-                    nd.SetOnly(marker);
+                    nd.AndWith(marker);
                     break;
                 }
             }
@@ -461,36 +499,72 @@ namespace WFC.Core {
             return math.log(weightSum) - weightLogWeightSum / weightSum + _rng.NextFloat() * 1e-3f;
         }
 
+        /// <summary>
+        /// Takes one step down the hierarchy for a cell. The cell's remaining routes share a prefix from the
+        /// root; the first place they differ is a branch. Each distinct child edge there is weighted by its
+        /// authored weight times the mean tile weight of the routes that still use it, one is chosen, and
+        /// the routes through the others are dropped. A flat hierarchy has a single branch at the root, whose
+        /// children are the tiles themselves, so this is a weighted pick among them.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        int PickTile(int cell) {
-            Domain domain    = D(cell);
-            float  weightSum = 0f;
+        void CollapseCell(int cell) {
+            Domain domain = D(cell);
+            int    first  = domain.FirstSet();
 
-            for (int w = 0; w < _wordsPerDomain; w++) {
-                ulong bits = domain.Word(w);
-                while (bits != 0UL) {
-                    int tile = Domain.FirstSetInWord(w, bits);
-                    bits      &= bits - 1UL;
-                    weightSum += WeightOf(cell, tile);
-                }
+            // First position at which the remaining routes use different edges.
+            int firstStart = _routeOffsets[first], firstLength = _routeOffsets[first + 1] - firstStart;
+            int branch     = firstLength;
+            for (int route = domain.NextSet(first + 1); route >= 0; route = domain.NextSet(route + 1)) {
+                int start = _routeOffsets[route];
+                int limit = math.min(firstLength, _routeOffsets[route + 1] - start);
+                int i     = 0;
+                while (i < limit && _routeEdges[firstStart + i] == _routeEdges[start + i]) i++;
+                if (i < branch) branch = i;
             }
 
-            float randomWeight = _rng.NextFloat() * weightSum;
-            int   selectedTile = 0;
+            if (branch >= firstLength) return; // a single route has nothing left to choose
 
-            for (int w = 0; w < _wordsPerDomain; w++) {
-                ulong bits = domain.Word(w);
-                while (bits != 0UL) {
-                    int tile = Domain.FirstSetInWord(w, bits);
-                    bits &= bits - 1UL;
-
-                    selectedTile =  tile;
-                    randomWeight -= WeightOf(cell, tile);
-                    if (randomWeight <= 0f) return selectedTile;
-                }
+            // Group the remaining routes by the edge they take at the branch.
+            for (int route = first; route >= 0; route = domain.NextSet(route + 1)) {
+                int edge = _routeEdges[_routeOffsets[route] + branch];
+                _edgeCounts[edge] = 0;
+                _edgeSums[edge]   = 0f;
             }
 
-            return selectedTile;
+            int groups = 0;
+            for (int route = first; route >= 0; route = domain.NextSet(route + 1)) {
+                int edge                                          = _routeEdges[_routeOffsets[route] + branch];
+                if (_edgeCounts[edge]++ == 0) _edgeList[groups++] = edge;
+                _edgeSums[edge] += WeightOf(cell, route);
+            }
+
+            float total = 0f;
+            for (int g = 0; g < groups; g++) {
+                int edge = _edgeList[g];
+                total += _edgeWeights[edge] * (_edgeSums[edge] / _edgeCounts[edge]);
+            }
+
+            // Weighted roulette over the groups. When every authored weight is zero, choose uniformly.
+            int chosen;
+            if (total > 0f) {
+                float randomWeight = _rng.NextFloat() * total;
+                chosen = -1;
+                for (int g = 0; g < groups; g++) {
+                    int   edge   = _edgeList[g];
+                    float weight = _edgeWeights[edge] * (_edgeSums[edge] / _edgeCounts[edge]);
+                    if (weight <= 0f) continue;
+
+                    chosen       =  edge;
+                    randomWeight -= weight;
+                    if (randomWeight <= 0f) break;
+                }
+            } else {
+                chosen = _edgeList[math.min((int)(_rng.NextFloat() * groups), groups - 1)];
+            }
+
+            for (int route = first; route >= 0; route = domain.NextSet(route + 1)) {
+                if (_routeEdges[_routeOffsets[route] + branch] != chosen) domain.Clear(route);
+            }
         }
 
         /// <summary> Commit accumulated domain changes to the entropy heap after propagation. </summary>
@@ -500,7 +574,7 @@ namespace WFC.Core {
                 int cell = _changedCells[i];
                 _changedFlags[cell] = 0;
 
-                if (D(cell).IsSingle) _heap.Remove(cell);
+                if (D(cell).IsCollapsed) _heap.Remove(cell);
                 else _heap.Update(cell, Entropy(cell));
             }
 

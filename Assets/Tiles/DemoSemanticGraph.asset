@@ -1,0 +1,239 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fef3fa23911d56b4e84f0e975dc5d73a, type: 3}
+  m_Name: DemoSemanticGraph
+  m_EditorClassIdentifier: Terrain::WFC.Terrain.SemanticGraphAsset
+  rootId: 0
+  nodes:
+  - name: Root
+    terrain: {fileID: 0}
+    overridePreviewColor: 1
+    previewColor: {r: 0.392, g: 0.42, b: 0.471, a: 1}
+    useBiomeCenter: 0
+    biomeCenter: 0.5
+    children:
+    - nodeId: 1
+      weight: 1
+    - nodeId: 2
+      weight: 1
+  - name: Land
+    terrain: {fileID: 0}
+    overridePreviewColor: 1
+    previewColor: {r: 0.725, g: 0.392, b: 0.725, a: 1}
+    useBiomeCenter: 0
+    biomeCenter: 0.5
+    children:
+    - nodeId: 3
+      weight: 4
+    - nodeId: 4
+      weight: 1
+  - name: Shore
+    terrain: {fileID: 0}
+    overridePreviewColor: 1
+    previewColor: {r: 0.961, g: 0.737, b: 0.376, a: 1}
+    useBiomeCenter: 0
+    biomeCenter: 0.5
+    children:
+    - nodeId: 4
+      weight: 1
+    - nodeId: 5
+      weight: 4
+  - name: Grass
+    terrain: {fileID: 11400000, guid: 14931abbd8d21902f974d4bf3b67e759, type: 2}
+    overridePreviewColor: 0
+    previewColor: {r: 0.345, g: 0.655, b: 0.333, a: 1}
+    useBiomeCenter: 1
+    biomeCenter: 0.75
+    children: []
+  - name: Dirt
+    terrain: {fileID: 11400000, guid: 44358bc666a0a0f0a9cc9b678efb1c78, type: 2}
+    overridePreviewColor: 0
+    previewColor: {r: 0.627, g: 0.408, b: 0.306, a: 1}
+    useBiomeCenter: 1
+    biomeCenter: 0.25
+    children: []
+  - name: Water
+    terrain: {fileID: 11400000, guid: ae911da95e91278c1bb54931e60dd584, type: 2}
+    overridePreviewColor: 0
+    previewColor: {r: 0.192, g: 0.608, b: 0.788, a: 1}
+    useBiomeCenter: 0
+    biomeCenter: 0.5
+    children: []
+  adjacencies:
+  - sourceId: 1
+    direction: 0
+    neighborId: 1
+  - sourceId: 1
+    direction: 1
+    neighborId: 1
+  - sourceId: 1
+    direction: 2
+    neighborId: 1
+  - sourceId: 1
+    direction: 3
+    neighborId: 1
+  - sourceId: 1
+    direction: 4
+    neighborId: 1
+  - sourceId: 1
+    direction: 5
+    neighborId: 1
+  - sourceId: 1
+    direction: 6
+    neighborId: 1
+  - sourceId: 1
+    direction: 7
+    neighborId: 1
+  - sourceId: 2
+    direction: 0
+    neighborId: 2
+  - sourceId: 2
+    direction: 1
+    neighborId: 2
+  - sourceId: 2
+    direction: 2
+    neighborId: 2
+  - sourceId: 2
+    direction: 3
+    neighborId: 2
+  - sourceId: 2
+    direction: 4
+    neighborId: 2
+  - sourceId: 2
+    direction: 5
+    neighborId: 2
+  - sourceId: 2
+    direction: 6
+    neighborId: 2
+  - sourceId: 2
+    direction: 7
+    neighborId: 2
+  - sourceId: 3
+    direction: 0
+    neighborId: 4
+  - sourceId: 3
+    direction: 1
+    neighborId: 4
+  - sourceId: 3
+    direction: 2
+    neighborId: 4
+  - sourceId: 3
+    direction: 3
+    neighborId: 4
+  - sourceId: 3
+    direction: 4
+    neighborId: 4
+  - sourceId: 3
+    direction: 5
+    neighborId: 4
+  - sourceId: 3
+    direction: 6
+    neighborId: 4
+  - sourceId: 3
+    direction: 7
+    neighborId: 4
+  - sourceId: 4
+    direction: 0
+    neighborId: 3
+  - sourceId: 4
+    direction: 1
+    neighborId: 3
+  - sourceId: 4
+    direction: 2
+    neighborId: 3
+  - sourceId: 4
+    direction: 3
+    neighborId: 3
+  - sourceId: 4
+    direction: 4
+    neighborId: 3
+  - sourceId: 4
+    direction: 5
+    neighborId: 3
+  - sourceId: 4
+    direction: 6
+    neighborId: 3
+  - sourceId: 4
+    direction: 7
+    neighborId: 3
+  - sourceId: 4
+    direction: 0
+    neighborId: 4
+  - sourceId: 4
+    direction: 1
+    neighborId: 4
+  - sourceId: 4
+    direction: 2
+    neighborId: 4
+  - sourceId: 4
+    direction: 3
+    neighborId: 4
+  - sourceId: 4
+    direction: 4
+    neighborId: 4
+  - sourceId: 4
+    direction: 5
+    neighborId: 4
+  - sourceId: 4
+    direction: 6
+    neighborId: 4
+  - sourceId: 4
+    direction: 7
+    neighborId: 4
+  - sourceId: 4
+    direction: 0
+    neighborId: 5
+  - sourceId: 4
+    direction: 1
+    neighborId: 5
+  - sourceId: 4
+    direction: 2
+    neighborId: 5
+  - sourceId: 4
+    direction: 3
+    neighborId: 5
+  - sourceId: 4
+    direction: 4
+    neighborId: 5
+  - sourceId: 4
+    direction: 5
+    neighborId: 5
+  - sourceId: 4
+    direction: 6
+    neighborId: 5
+  - sourceId: 4
+    direction: 7
+    neighborId: 5
+  - sourceId: 5
+    direction: 0
+    neighborId: 4
+  - sourceId: 5
+    direction: 1
+    neighborId: 4
+  - sourceId: 5
+    direction: 2
+    neighborId: 4
+  - sourceId: 5
+    direction: 3
+    neighborId: 4
+  - sourceId: 5
+    direction: 4
+    neighborId: 4
+  - sourceId: 5
+    direction: 5
+    neighborId: 4
+  - sourceId: 5
+    direction: 6
+    neighborId: 4
+  - sourceId: 5
+    direction: 7
+    neighborId: 4

@@ -31,6 +31,7 @@ namespace WFC.Terrain {
         public readonly float cellSize;
         public readonly WFCTerrainGenerator.View view;
         public readonly bool overlays;
+        internal readonly Func<int, Color> semanticColorAt;
 
         public TerrainRenderContext(WFCTerrainGenerator generator, Transform root) {
             this.root   = root;
@@ -43,6 +44,8 @@ namespace WFC.Terrain {
             cellSize = generator.cellSize;
             view     = generator.view;
             overlays = generator.overlays;
+            if (view == WFCTerrainGenerator.View.Logic)
+                semanticColorAt = generator.SemanticColorAt;
         }
 
         public int TerrainAt(int x, int y) => WFCSolver.IsOutOfBounds(x, y, width, height) ? -1 : layout[y * width + x];

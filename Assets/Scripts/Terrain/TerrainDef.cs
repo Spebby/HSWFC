@@ -101,26 +101,12 @@ namespace WFC.Terrain {
     /// </summary>
     [CreateAssetMenu(menuName = "Terrain/Terrain Def", fileName = "Terrain_")]
     public class TerrainDef : ScriptableObject {
-        [Header("Base tile (opaque, fills the cell)")]
+        [Header("Visual Data")]
         public Sprite[] baseVariants;
-
         public Color debugColor = Color.magenta;
 
-        [Header("Logic: weights")] public float weight = 1f;
-
-        [Range(0f, 1f)] [Tooltip("Where on the low-frequency biome noise this terrain prefers to appear.")]
-        public float biomeCenter = 0.5f;
-
-        [Header("Logic: adjacency")]
-        [Tooltip("Terrains allowed to touch this one across cardinals (and if enabled) diagonals. A terrain may always touch itself.")]
-        public List<TerrainDef> canNeighbor = new();
-
-        [Tooltip("Directional rules, e.g. a door that needs road to its south.")]
-        public List<DirectionalRule> rules = new();
-
-        [Header("Overlay (drawn over lower-priority neighbours)")]
+        [Header("Overlay")]
         public int priority;
-
         public OverlayArt overlay = new();
         public List<TerrainDef> noOverlayOnto = new();
 

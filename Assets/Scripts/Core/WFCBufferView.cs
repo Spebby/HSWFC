@@ -56,7 +56,7 @@ namespace WFC.Core {
             }
         }
 
-        public bool IsSingle {
+        public bool IsCollapsed {
             get {
                 ulong any      = 0;
                 ulong multiple = 0;
@@ -161,6 +161,14 @@ namespace WFC.Core {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void AndNotWith(Domain mask) {
             for (int i = 0; i < _k; i++) _p[i] &= ~mask._p[i];
+        }
+
+        /// <returns>True if every bit of this domain is also set in the mask</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool IsSubsetOf(Domain mask) {
+            ulong outside = 0;
+            for (int i = 0; i < _k; i++) outside |= _p[i] & ~mask._p[i];
+            return outside == 0;
         }
 
         /// <returns>True if the domain contains exactly this one bit</returns>

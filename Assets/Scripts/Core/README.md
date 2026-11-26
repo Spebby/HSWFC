@@ -7,12 +7,9 @@ neighbours, it can check a whole 3x3 neighbourhoods (Window Constraints).
 
 ## Data Model
 
-**Domanins** Every cell keeps a list of the tiles it could still become,
-stored as a `ulong`. If bit _t_ is set, tile _t_ is still possible.
-One 64-bit number per cell means a cell's whole state fits in a register and
-checks/removals are very cheap. The cost is that there is a hard
-limit of 64 tiles. If we need more tiles, then we'd need to allocate more ulongs
-per cell, or split up solving into chunks.
+**Domains** Each cell stores its remaining tile IDs as a bitset. The buffers
+use one `ulong` per 64 tile IDs, with tile _t_ stored in word `t / 64` at bit
+`t % 64`. Some older convenience helpers work with a single word only.
 
 **Directions** There are eight: N, NE, E, SE, S, SW, W, NW, numbered 0 to 7
 to match Wangtiles configuration. +y acts as north. Direction _d_ owns bit
@@ -43,9 +40,8 @@ rules. The builder compiles Terrain Definitions into rules based on...
   would be off the map. A door that needs road to the south can't be on the south
   edge. The solver applies this to the starting domains. (Consider cutting)
 
-Everything is compiled into one table, because this is how basic WFC works, and
-we want fast lookup. Pairwise and Window Constrains all flatten into the same bitsets.
-Any new kind of rule is a new step in the compiler, not a change to the solver.
+Pairwise adjacency is compiled into the support table for fast lookup. Window
+constraints use separate feasibility tables and inspect a whole neighborhood.
 
 ## Window Constraints
 
@@ -144,3 +140,44 @@ There are a few areas this could be improved.
   in blocks.
 - Starting state: Reserved areas, pinned tiles
 - Weights: Any per-cell bias, such as a designer brush.
+
+## Semantic DAG solving
+
+Semantic DAG solving
+
+`SemanticGraph` contains named nodes, weighted child edges, directed adjacency
+declarations, and a terrain ID on each leaf. A child can have multiple parents.
+The compiler validates references, weights, cycles, and reachability from the root,
+then enumerates routes: root-to-leaf paths. A route is a terrain in the context
+of the nodes above it. Root → Land → Dirt and Root → Shore → Dirt are two routes
+with the same terrain.
+
+The solver's tiles are routes. A cell's domain is a bitset over routes,
+so propagation, windows, boundary rules and the heap are the flat kernel on a larger
+alphabet. A flat terrain set is a graph with a root and one leaf per terrain,
+where routes and terrains coincide.
+
+`RouteRules.Expand` lifts the terrain rules to routes once per solver.
+A direction that the graph never declares keeps the terrain adjacency table.
+In a direction that it does declare, the declarations alone define the allowed pairs:
+a route may neighbour the routes through every neighbour node declared by any
+node on it. Declarations inherit down the graph, a leaf can add to what its ancestors
+grant, and the compiler adds each opposite-direction declaration. Explicit directional
+terrain restrictions still apply. To keep one variant narrower than a sibling,
+grant the extra neighbours on the sibling rather than on their shared parent.
+
+Observation takes one step down the graph. The cell's remaining routes share
+a prefix from the root. At the first position where they differ, each distinct
+child edge is weighted by its authored weight times the mean tile weight of the
+routes still using it. One edge is chosen and the routes through the others are
+removed. If every weight is zero the choice is uniform. Tile weights are the terrain
+weights, or the per-cell biome weights when set.
+
+`Solve(initialSemanticNodes: ...)` takes one node ID per cell, or `-1` for the root,
+and starts the cell with the routes through that node. After success, `Layout` holds
+terrains, `SemanticNodes` holds each cell's leaf, and `GetSemanticPath(cell)` returns
+the path from the starting node to the leaf. Failed solves have empty paths.
+
+Compilation rejects graphs above 16,384 routes or 1,048,576 total node entries
+across routes. The expanded support table is limited to 64 MiB. Shared leaves
+multiply routes, so highly connected DAGs reach these limits quickly.

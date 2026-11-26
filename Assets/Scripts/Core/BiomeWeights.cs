@@ -5,14 +5,12 @@ using static System.Math;
 namespace WFC.Core {
     /// <summary>
     /// Optional regional weighting. Each tile prefers the part of the noise range around its "biomeCenter".
-    /// Produces per-cell weight array that <see cref="WFCSolver.Solve"/> accepts.
+    /// Produces per-cell weight array that <see cref="WFCSolver.Solve"/> accepts. With a semantic graph the tiles are
+    /// routes, and <see cref="CompiledSemanticGraph.RouteBiomeCenters"/> supplies their centers.
     /// </summary>
-    /// <remarks>
-    /// Extra for HSWFC. Arguably more powerful since metatiles could be given regional weights & children can inherit it.
-    /// </remarks>
     public static class BiomeWeights {
         /// <param name="weight">Base weight per tile.</param>
-        /// <param name="biomeCenter">Preferred noise value (0..1) per tile.</param>
+        /// <param name="biomeCenter">Preferred noise value (0..1) per tile, or NaN for a tile that ignores the noise.</param>
         /// <param name="regionalBias">0 = ignore the noise, 1 = strong regional preference.</param>
         /// <param name="noiseScale">Cells per noise lattice step; larger = bigger regions.</param>
         /// <returns>Weights, cell-major: [(y * width + x) * count + tile].</returns>
@@ -23,6 +21,11 @@ namespace WFC.Core {
             float[] w     = new float[width * height * n];
             for (int i = 0; i < width * height; i++) {
                 for (int t = 0; t < n; t++) {
+                    if (float.IsNaN(biomeCenter[t])) {
+                        w[i * n + t] = Max(1e-4f, weight[t]);
+                        continue;
+                    }
+
                     float dv = noise[i] - biomeCenter[t];
                     w[i * n + t] = Max(1e-4f, weight[t] * (float)Exp(-20f * regionalBias * dv * dv));
                 }

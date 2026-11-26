@@ -12,7 +12,7 @@ namespace WFC.Terrain {
 
                     switch (ctx.view) {
                         case WFCTerrainGenerator.View.Logic:
-                            sink.AddFlat(ctx.terrain.defs[t].debugColor, x, y, 0);
+                            sink.AddFlat(ctx.semanticColorAt(y * ctx.width + x), x, y, 0);
                             continue;
 
                         case WFCTerrainGenerator.View.Regions: {
