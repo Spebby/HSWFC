@@ -1,0 +1,19 @@
+{
+    "name": "Terrain.Editor",
+    "rootNamespace": "WFC",
+    "references": [
+        "GUID:b7f53432d21049a6982ab46cefa15944",
+        "GUID:a338ffbbfa2871172aeb98747b20b1df"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -12,7 +12,7 @@ using WFC.Core;
 
 
 // AI generated
-namespace WFC.Terrain {
+namespace WFC.Terrain.Editor {
     /// <summary>
     /// Edits to a <see cref="SemanticGraphAsset"/> that keep its node IDs consistent. The asset stores nodes by list
     /// index, so every operation that removes a node also remaps the IDs that refer to the nodes after it.
@@ -321,7 +321,7 @@ namespace WFC.Terrain {
     }
 
     [CustomEditor(typeof(SemanticGraphAsset))]
-    public sealed class SemanticGraphAssetEditor : Editor {
+    public sealed class SemanticGraphAssetEditor : UnityEditor.Editor {
         const float INDENT = 16f;
 
         readonly HashSet<SemanticGraphAsset.Node> _collapsedNodes = new();
